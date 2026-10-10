@@ -1,10 +1,10 @@
 module catalog
 
-import std/json::{JSON, Any}
+import std/json::{JSON}
 import std/html::{HTML}
 import std/text
 import std/time::{Time}
-import toml::{parse_toml}
+import toml::{TOML}
 import modules::{activity, ago}
 import slang::{Slang}
 
@@ -18,7 +18,7 @@ import slang::{Slang}
 # project directory.
 
 # Catalog entries contain string-valued fields; this checks that they do.
-def json_records(records : Array(Any)) : Array(Hash(String, String))
+def json_records(records : Array(TOML::Any)) : Array(Hash(String, String))
   records.map do |record|
     fields = {} of String => String
     record.as_h.each { |key, value| fields[key] = value.as_s }
@@ -26,7 +26,7 @@ def json_records(records : Array(Any)) : Array(Hash(String, String))
   end
 end
 
-CATALOG = parse_toml(File.read("data/catalog.toml"))
+CATALOG = TOML.parse(File.read("data/catalog.toml"))
 CATEGORIES = CATALOG["categories"].as_a
 NOW = Time.utc
 
@@ -35,7 +35,7 @@ NOW = Time.utc
 def imported_modules : Array(Hash(String, String))
   modules = [] of Hash(String, String)
   return modules unless File.exists?("data/modules.toml")
-  data = parse_toml(File.read("data/modules.toml"))
+  data = TOML.parse(File.read("data/modules.toml"))
   return modules unless data["modules"]?
   overrides = CATALOG["modules"]? ? json_records(CATALOG["modules"].as_a) : [] of Hash(String, String)
   json_records(data["modules"].as_a).each do |record|

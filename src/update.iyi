@@ -4,7 +4,7 @@ import std/json::{JSON, Any}
 import std/text
 import std/process::{Process, ProcessResult}
 import std/time::{Time}
-import toml::{parse_toml}
+import toml::{TOML}
 import modules::{gettable?, requirements, latest_version, category_for, dependents, modules_toml}
 
 # Finds every iyi module on GitHub and writes data/modules.toml with its
@@ -127,11 +127,11 @@ def fetch(name : String) : Hash(String, String)?
   record
 end
 
-catalog = parse_toml(File.read("data/catalog.toml"))
+catalog = TOML.parse(File.read("data/catalog.toml"))
 seeds = catalog["modules"]? ? catalog["modules"].as_a.map { |entry| entry["repo"].as_s } : [] of String
 previous = {} of String => Hash(String, String)
 if File.exists?(TARGET)
-  old = parse_toml(File.read(TARGET))
+  old = TOML.parse(File.read(TARGET))
   if old["modules"]?
     old["modules"].as_a.each do |entry|
       fields = {} of String => String

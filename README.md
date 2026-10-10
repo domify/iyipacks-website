@@ -102,12 +102,11 @@ the full syntax, and its `TEMPLATES.md` for what differs from Slim. An attribute
 outside parentheses, so compute longer expressions in a `- name = …` line
 first, and keep a space before `=` output after such a value.
 
-iyi has no TOML module, so `src/toml.iyi` reads the subset the catalog uses:
-comments, arrays of tables such as `[[packages]]`, and bare keys with
-`"basic"` (with escapes), `'literal'` and `'''multiline literal'''` string values.
-Anything else — numbers, inline tables, duplicate keys — stops the build with
-its line number. Every field is a string, the imported numbers too; `toml_string`
-writes them for `make update`.
+TOML is read by [github.com/domify/toml](https://github.com/domify/toml),
+the iyi port of toml.cr, so invalid TOML stops the build with its line and
+column. Every field of the catalog is a string, the imported numbers too,
+and a value of another kind stops the build; `TOML.quote` writes them for
+`make update`.
 
 Downloads are not counted: `iyi get` fetches from git, which no one can see.
 
@@ -115,7 +114,7 @@ Downloads are not counted: `iyi get` fetches from git, which no one can see.
 
 ```sh
 make check       # Static checking of the generator, preview server and smoke test
-make test        # Native iyi tests of the TOML reader and writer, the import rules and every generated page
+make test        # Native iyi tests of the import rules and every generated page
 make test-smoke  # iyi end-to-end test: build, serve over HTTP, drive headless Chrome
 ```
 

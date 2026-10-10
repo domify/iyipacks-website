@@ -1,7 +1,7 @@
 module iyipacks/check
 
 import catalog::{site_files}
-import toml::{parse_toml, toml_string}
+import toml::{TOML}
 import modules::{module_path, requirements, gettable?, latest_version, category_for, dependents, modules_toml, activity, ago}
 import std/json::{JSON}
 import std/time::{Time}
@@ -34,16 +34,6 @@ def occurrences(text : String, part : String) : Int32
   text.split(part).size - 1
 end
 
-parsed = parse_toml("# c\n[[a]]\nk = \"x \\\"q\\\" \\u00e9\\n\" # tail\nl = 'C:\\path'\nm = '''\nline1\nline2'''\n[[a]]\nk = \"↗\"\n")
-assert_ok(parsed["a"].as_a.size == 2, "TOML array of tables")
-assert_ok(parsed["a"][0]["k"].as_s == "x \"q\" é\n", "TOML basic string escapes")
-assert_ok(parsed["a"][0]["l"].as_s == "C:\\path", "TOML literal string")
-assert_ok(parsed["a"][0]["m"].as_s == "line1\nline2", "TOML multiline literal string")
-assert_ok(parsed["a"][1]["k"].as_s == "↗", "TOML Unicode")
-
-tricky = "a \"b\" \\ c\nd\te\u0001 é ↗"
-assert_ok(parse_toml("[[a]]\nk = #{toml_string(tricky)}\n")["a"][0]["k"].as_s == tricky, "TOML string written and read back")
-
 # What update.iyi decides about a repository and its iyi.mod.
 manifest = "\uFEFF# c\nmodule github.com/Owner/Lib\n\nrequire github.com/a/b v1.2.0 as b\nrequire github.com/c/d v0.1.0\n"
 assert_ok(module_path(manifest) == "github.com/Owner/Lib" && module_path("# none\n").nil?, "iyi.mod module path")
@@ -54,7 +44,7 @@ assert_ok(latest_version(["v1.0.0", "v1.0.0-beta"]) == "v1.0.0" && latest_versio
 assert_ok(category_for(["iyi", "JSON"]) == "data" && category_for(["cli", "http"]) == "web" && category_for(["iyi"]) == "other", "category from topics")
 uses = dependents([{"requires" => "github.com/a/b github.com/c/d"}, {"requires" => "github.com/A/B"}, {"requires" => ""}])
 assert_ok(uses["github.com/a/b"] == 2 && uses["github.com/c/d"] == 1 && uses.size == 2, "dependents")
-written = parse_toml(modules_toml([{"repo" => "a/b", "description" => "say \"hi\""}], "2026-01-01T00:00:00Z"))
+written = TOML.parse(modules_toml([{"repo" => "a/b", "description" => "say \"hi\""}], "2026-01-01T00:00:00Z"))
 assert_ok(written["modules"][0]["description"].as_s == "say \"hi\"" && written["modules"][0]["stars"].as_s == "", "modules.toml written")
 now = Time.parse_rfc3339("2026-10-10T12:00:00Z")
 assert_ok(activity("2026-08-01T00:00:00Z", now) == "Active" && activity("2026-01-01T00:00:00Z", now) == "Quiet" && activity("2024-01-01T00:00:00Z", now) == "Inactive", "activity")
@@ -62,8 +52,8 @@ assert_ok(ago("2026-10-10T08:00:00Z", now) == "today" && ago("2026-10-09T08:00:0
 
 # The site has every standard module of data/catalog.toml and every module
 # of data/modules.toml that an override does not hide.
-catalog = parse_toml(File.read("data/catalog.toml"))
-imported = File.exists?("data/modules.toml") ? parse_toml(File.read("data/modules.toml")) : parse_toml("")
+catalog = TOML.parse(File.read("data/catalog.toml"))
+imported = File.exists?("data/modules.toml") ? TOML.parse(File.read("data/modules.toml")) : TOML.parse("")
 hidden = catalog["modules"]? ? catalog["modules"].as_a.select { |entry| entry.as_h.has_key?("hidden") && entry["hidden"].as_s == "true" }.map { |entry| entry["repo"].as_s.downcase } : [] of String
 module_count = imported["modules"]? ? imported["modules"].as_a.count { |entry| !hidden.includes?(entry["repo"].as_s.downcase) } : 0
 total = catalog["packages"].as_a.size + module_count
@@ -112,4 +102,4 @@ files.each do |path, content|
     end
   end
 end
-puts "PASS: TOML reader and writer, module import rules, catalog data, listing and category pages, all #{total} details, comparison, escaping, links and assets"
+puts "PASS: module import rules, catalog data, listing and category pages, all #{total} details, comparison, escaping, links and assets"

@@ -220,3 +220,7 @@ distribution = "Standard library"
 [[modules]]
 repo = "domify/slang"
 category = "text"
+
+[[modules]]
+repo = "domify/toml"
+category = "data"

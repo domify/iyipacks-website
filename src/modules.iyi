@@ -3,7 +3,7 @@ module modules
 import std/text
 import std/semantic_version::{SemanticVersion}
 import std/time::{Time}
-import toml::{toml_string}
+import toml::{TOML}
 
 # What update.iyi needs to know about iyi modules, apart from fetching them,
 # and what the site says about their age. An iyi module is a GitHub
@@ -91,7 +91,7 @@ pub def modules_toml(records : Array(Hash(String, String)), imported : String) :
   text += "# Overrides go in [[modules]] of data/catalog.toml.\n"
   records.each do |record|
     text += "\n[[modules]]\n"
-    MODULE_FIELDS.each { |key| text += "#{key} = #{toml_string(record[key]? || "")}\n" }
+    MODULE_FIELDS.each { |key| text += "#{key} = #{TOML.quote(record[key]? || "")}\n" }
   end
   text
 end

@@ -120,7 +120,7 @@ root = Dir.current
 work = "#{root}/.cache/smoke"
 run("rm", ["-rf", work])
 
-["[[a]]\nk = 1\n", "[[a]]\nk = \"x\"\nk = \"y\"\n", "[[a]]\nk = \"open\n", "[a]\n", "[[a]]\nk = \"x\" junk\n", "[[a]]\nk = '''\nnever closed\n", "[[a]]\nk = \"\\q\"\n"].each_with_index do |bad, n|
+["[[a]]\nk = [1, \"x\"]\n", "[[a]]\nk = \"x\"\nk = \"y\"\n", "[[a]]\nk = \"open\n", "[a]\n[a]\n", "[[a]]\nk = \"x\" junk\n", "[[a]]\nk = '''\nnever closed\n", "[[a]]\nk = \"\\q\"\n"].each_with_index do |bad, n|
   dir = "#{work}/bad#{n}"
   Dir.mkdir_p("#{dir}/data")
   Dir.mkdir_p("#{dir}/public")
