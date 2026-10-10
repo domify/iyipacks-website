@@ -5,6 +5,7 @@ import std/dir::{Dir}
 import std/http::{HTTP, Server, Response}
 import std/socket::{IyiSocket}
 import std/process::{Process, ProcessResult}
+import std/json::{JSON}
 import static::{serve_file}
 
 # Runs bin/build on bad TOML and on the real catalog, serves the generated
@@ -82,14 +83,22 @@ def check_site(base : String, chrome : String, site : String) : Nil
     puts "SKIP: browser checks (set CHROME to a Chrome or Chromium binary)"
     return
   end
-  assert_ok(visible_cards(browse(chrome, base + "/")).size == 19, "all cards")
-  assert_ok(visible_cards(browse(chrome, base + "/?q=http")) == ["http"], "search")
-  assert_ok(visible_cards(browse(chrome, base + "/?category=web")).size == 5, "category filter")
-  assert_ok(visible_cards(browse(chrome, base + "/categories/web/")).size == 5, "category page")
-  assert_ok(visible_cards(browse(chrome, base + "/categories/web/?category=")).size == 19, "category page cleared")
-  assert_ok(visible_cards(browse(chrome, base + "/?kind=Crystal+compatible")).size == 3, "compatibility filter")
-  empty = browse(chrome, base + "/?category=data&kind=Crystal+compatible")
+  packages = JSON.parse(fetch(base + "/packages.json").body)["packages"].as_a
+  total = packages.size
+  web = packages.count { |pack| pack["category"].as_s == "web" }
+  assert_ok(visible_cards(browse(chrome, base + "/")).size == total, "all cards")
+  assert_ok(visible_cards(browse(chrome, base + "/?q=http")).includes?("http"), "search")
+  assert_ok(visible_cards(browse(chrome, base + "/?category=web")).size == web, "category filter")
+  assert_ok(visible_cards(browse(chrome, base + "/categories/web/")).size == web, "category page")
+  assert_ok(visible_cards(browse(chrome, base + "/categories/web/?category=")).size == total, "category page cleared")
+  empty = browse(chrome, base + "/?q=no-such-package-anywhere")
   assert_ok(visible_cards(empty).empty? && !hidden?(empty, "empty"), "empty state")
+  # Standard modules have no GitHub numbers and come last by stars.
+  std = packages.select { |pack| pack["distribution"].as_s == "Standard library" }.map { |pack| pack["slug"].as_s }
+  by_stars = visible_cards(browse(chrome, base + "/?sort=stars"))
+  assert_ok(by_stars.size == total && std.all? { |slug| (by_stars.index(slug) || -1) >= total - std.size }, "sorting by stars")
+  by_update = visible_cards(browse(chrome, base + "/?sort=updated"))
+  assert_ok(by_update.size == total && std.all? { |slug| (by_update.index(slug) || -1) >= total - std.size }, "sorting by last update")
   attack = browse(chrome, base + "/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
   assert_ok(visible_cards(attack).empty? && attack.split("<script").size == 2, "search text is not markup")
   asc = visible_cards(browse(chrome, base + "/?sort=name"))

@@ -1,12 +1,12 @@
 section.detail.prose
   a.text-link href="#{root}index.html" ← Back home
   h1!= accent("A good place to start")
-  p.lead A hand-curated directory for the iyi ecosystem, inspired by the Ruby Toolbox.
+  p.lead A directory of the iyi ecosystem, inspired by the Ruby Toolbox.
   h2 What is in the directory?
-  p Native iyi standard modules and a small selection of Crystal ecosystem libraries. Standard modules ship with iyi. Crystal libraries require the Crystal compatibility mode and their own dependencies.
+  p The iyi standard library, and every iyi module on GitHub: a repository whose iyi.mod at its root names it, so that iyi get can fetch it. Crystal shards are not listed; find them in the Crystal ecosystem's own directories.
   h2 Honest data
-  p This is a starter catalog, not a package registry. GitHub stars, downloads, releases and maintenance status have not been collected. A Crystal entry is an ecosystem reference, not a guarantee that every release compiles with iyi.
+  p Stars, forks, issues, contributors, version tags and the last push come from GitHub, as they were when the catalog was last imported. "Used by" counts the listed modules whose iyi.mod requires a module. Downloads are not counted: iyi get fetches from git, and nobody sees that.
   h2 Contribute
-  p Add or update entries in data/catalog.toml and rebuild the site. Every entry links to its source.
+  p Give your module's repository the topic iyi, or add it to data/catalog.toml, which also corrects a module's category or description. Every entry links to its source.
   p
     a.button href="https://iyi.dev/" Explore iyi ↗

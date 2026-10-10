@@ -134,11 +134,12 @@ select,.filters button{background:var(--raise);border:1px solid var(--hairline);
 .package-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .package-icon{border:1px solid var(--hairline);background:var(--brand-soft);width:34px;height:34px;border-radius:8px;display:grid;place-items:center;font:20px Georgia,serif;color:var(--brand-deep)}
 .badge{display:inline-block;font:9px var(--font-mono);border:1px solid var(--hairline);background:var(--raise);padding:3px 6px;border-radius:4px;color:var(--graphite);white-space:nowrap}
-.badge.crystal{color:var(--brand-deep);background:var(--brand-soft);border-color:var(--hairline)}
+.badge.module{color:var(--brand-deep);background:var(--brand-soft);border-color:var(--hairline)}
 .package h3{font-size:19px;letter-spacing:-.4px;font-weight:500;margin:20px 0 8px}
 .package h3 a{display:flex;justify-content:space-between}
 .package h3 span{color:var(--mute);font-size:14px}
 .package p{font-size:12px;color:var(--mute);line-height:1.8;margin:0 0 23px;flex:1}
+.package p.package-stats{font:10px var(--font-mono);flex:0;margin:0 0 12px}
 .package-bottom{border-top:1px solid var(--hairline);padding-top:13px;display:flex;justify-content:space-between;gap:5px;font-size:9px;color:var(--mute);align-items:center}
 .package-bottom input{accent-color:var(--brand-deep);width:11px;height:11px;vertical-align:middle;margin:0 2px 0 0}
 .package-bottom label{white-space:nowrap;cursor:pointer}

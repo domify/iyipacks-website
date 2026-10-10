@@ -1,0 +1,178 @@
+module iyipacks/update
+
+import std/json::{JSON, Any}
+import std/text
+import std/process::{Process, ProcessResult}
+import std/time::{Time}
+import toml::{parse_toml}
+import modules::{gettable?, requirements, latest_version, category_for, dependents, modules_toml}
+
+# Finds every iyi module on GitHub and writes data/modules.toml with its
+# GitHub numbers. Candidates come from code search for an iyi.mod at a
+# repository's root (needs GITHUB_TOKEN), repositories with the topic `iyi`,
+# and the `repo` of each [[modules]] in data/catalog.toml; each is kept when
+# it is not archived and its iyi.mod names it as `iyi get` needs. A fork is
+# kept on the same terms: one that only copies a module names the original.
+# curl does the HTTPS, as std/http has no TLS. Without GITHUB_TOKEN the API
+# allows 60 requests an hour, enough for a few modules but not for search.
+# A module that cannot be read this time keeps its record from the last run.
+
+API = "https://api.github.com/"
+TOKEN = Program.env("GITHUB_TOKEN") || ""
+TARGET = "data/modules.toml"
+# Paths that failed for a reason that may pass: no answer, or a 5xx.
+FAILED = [] of String
+
+# The status and body of a GET. The token goes to curl on its standard input,
+# so that it is not in the process list.
+def get(url : String) : {Int32, String}
+  config = "header = \"User-Agent: iyipacks\"\n"
+  if url.starts_with?(API)
+    config += "header = \"Accept: application/vnd.github+json\"\nheader = \"X-GitHub-Api-Version: 2022-11-28\"\n"
+  end
+  config += "header = \"Authorization: Bearer #{TOKEN}\"\n" unless TOKEN.empty?
+  result = Process.run("curl", ["-sS", "-L", "--max-time", "30", "-K", "-", "-w", "\n%{http_code}", url], input: config)
+  raise "update: cannot run curl" unless result.is_a?(ProcessResult)
+  return {0, result.stderr} unless result.success?
+  cut = result.stdout.rindex('\n') || 0
+  {result.stdout[cut + 1, result.stdout.size].to_i? || 0, result.stdout[0, cut]}
+end
+
+# The JSON at *path* of the API; nil when it is not there. Stops the run on
+# the rate limit or a refused token, as the data would be incomplete.
+def api(path : String) : Any?
+  status, body = get(API + path)
+  if status == 403 || status == 429 || status == 401
+    raise "update: GitHub refused #{path} (#{status}): #{body[0, 200]}"
+  end
+  FAILED << path if status == 0 || status >= 500
+  return nil unless status == 200
+  JSON.parse(body)
+end
+
+def text(value : Any?) : String
+  return "" unless value
+  value.as_s? || (value.as_i64? || "").to_s
+end
+
+def search_code : Array(String)
+  if TOKEN.empty?
+    STDERR.puts "update: GITHUB_TOKEN is not set; code search is skipped"
+    return [] of String
+  end
+  repos = [] of String
+  (1..10).each do |page|
+    sleep(7000) if page > 1 # code search allows 10 requests a minute
+    found = api("search/code?q=module+filename%3Aiyi.mod+path%3A%2F&per_page=100&page=#{page}")
+    break unless found
+    items = found["items"].as_a
+    items.each { |item| repos << item["repository"]["full_name"].as_s }
+    break if items.size < 100
+  end
+  repos
+end
+
+def search_topic : Array(String)
+  found = api("search/repositories?q=topic%3Aiyi+fork%3Atrue&per_page=100")
+  return [] of String unless found
+  found["items"].as_a.map { |item| item["full_name"].as_s }
+end
+
+# The record of *name*, or nil when it is no iyi module.
+def fetch(name : String) : Hash(String, String)?
+  repo = api("repos/#{name}")
+  return nil unless repo
+  return nil if repo["archived"].as_bool || repo["private"].as_bool
+  full = repo["full_name"].as_s
+  status, manifest = get("https://raw.githubusercontent.com/#{full}/#{repo["default_branch"].as_s}/iyi.mod")
+  FAILED << full if status == 0 || status >= 500
+  return nil unless status == 200 && gettable?(manifest, full)
+
+  record = {} of String => String
+  record["name"] = repo["name"].as_s
+  record["module"] = "github.com/#{full}"
+  record["repo"] = full
+  topics = (repo["topics"]? ? repo["topics"].as_a.map(&.as_s) : [] of String)
+  record["topics"] = topics.join(" ")
+  record["category"] = category_for(topics)
+  record["description"] = text(repo["description"]?)
+  record["source"] = repo["html_url"].as_s
+  record["homepage"] = text(repo["homepage"]?)
+  record["usage"] = "iyi get github.com/#{full}"
+  license = repo["license"]?
+  spdx = license && license.as_h? ? text(license["spdx_id"]?) : ""
+  record["license"] = spdx == "NOASSERTION" ? "" : spdx
+  record["distribution"] = "GitHub"
+  record["stars"] = text(repo["stargazers_count"]?)
+  record["forks"] = text(repo["forks_count"]?)
+  record["issues"] = text(repo["open_issues_count"]?)
+  record["watchers"] = text(repo["subscribers_count"]?)
+  record["created"] = text(repo["created_at"]?)
+  record["pushed"] = text(repo["pushed_at"]?)
+  record["requires"] = requirements(manifest).join(" ")
+
+  tags = api("repos/#{full}/tags?per_page=100")
+  tag_list = tags ? tags.as_a : [] of Any
+  version = latest_version(tag_list.map { |tag| tag["name"].as_s })
+  record["version"] = version || ""
+  record["released"] = ""
+  if version
+    tag = tag_list.find { |t| t["name"].as_s == version }
+    commit = tag ? api("repos/#{full}/commits/#{tag["commit"]["sha"].as_s}") : nil
+    record["released"] = text(commit["commit"]["committer"]["date"]?) if commit
+  end
+  contributors = api("repos/#{full}/contributors?per_page=100&anon=1")
+  count = contributors ? contributors.as_a.size : 0
+  record["contributors"] = count >= 100 ? "100+" : count.to_s
+  record
+end
+
+catalog = parse_toml(File.read("data/catalog.toml"))
+seeds = catalog["modules"]? ? catalog["modules"].as_a.map { |entry| entry["repo"].as_s } : [] of String
+previous = {} of String => Hash(String, String)
+if File.exists?(TARGET)
+  old = parse_toml(File.read(TARGET))
+  if old["modules"]?
+    old["modules"].as_a.each do |entry|
+      fields = {} of String => String
+      entry.as_h.each { |key, value| fields[key] = value.as_s }
+      previous[fields["repo"].downcase] = fields
+    end
+  end
+end
+
+# One spelling per repository, the first seen; GitHub's names ignore case.
+candidates = [] of String
+(search_code + search_topic + seeds + previous.values.map { |record| record["repo"] }).each do |name|
+  candidates << name unless candidates.any? { |seen| seen.downcase == name.downcase }
+end
+candidates = candidates.sorted_by(&.downcase)
+STDERR.puts "update: #{candidates.size} candidates"
+records = [] of Hash(String, String)
+candidates.each do |name|
+  failures = FAILED.size
+  record = fetch(name)
+  if FAILED.size > failures && previous[name.downcase]?
+    # GitHub did not answer this time: keep what we had.
+    record = previous[name.downcase]
+    STDERR.puts "update: #{name} kept from the last run"
+  end
+  records << record if record
+end
+
+# A module's slug is its repository's name, or OWNER-NAME when two share it
+# or a standard module has it.
+std_slugs = catalog["packages"].as_a.map { |pack| pack["slug"].as_s }
+names = records.map { |record| record["name"].downcase }
+records.each do |record|
+  slug = record["name"].downcase
+  if std_slugs.includes?(slug) || names.count { |other| other == slug } > 1
+    slug = record["repo"].downcase.sub("/", "-")
+  end
+  record["slug"] = slug.chars.map { |c| c.ascii_alphanumeric? || c == '_' || c == '-' ? c.to_s : "-" }.join("")
+end
+counts = dependents(records)
+records.each { |record| record["dependents"] = (counts[record["module"].downcase]? || 0).to_s }
+
+File.write(TARGET, modules_toml(records, Time.utc.to_rfc3339))
+puts "iyipacks → #{records.size} modules written to #{TARGET}"

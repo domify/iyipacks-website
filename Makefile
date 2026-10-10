@@ -1,5 +1,8 @@
-.PHONY: build serve check test test-smoke clean
+.PHONY: build serve update check test test-smoke clean
 IYI = IYI_CACHE_DIR=$(CURDIR)/.cache iyi
+# .env, kept out of git, may hold GITHUB_TOKEN=… for make update.
+-include .env
+export GITHUB_TOKEN
 # Generates the static site into site/ (or OUT=dir) from data/catalog.toml.
 build:
 	mkdir -p bin
@@ -9,10 +12,17 @@ build:
 serve: build
 	$(IYI) build src/serve.iyi -o bin/serve --no-color
 	./bin/serve
+# Finds the iyi modules on GitHub and writes data/modules.toml; set
+# GITHUB_TOKEN, here or in .env, for code search and a higher rate limit.
+update:
+	mkdir -p bin
+	$(IYI) build src/update.iyi -o bin/update --no-color
+	./bin/update
 check:
 	$(IYI) check src/build.iyi --no-color
 	$(IYI) check src/serve.iyi --no-color
 	$(IYI) check src/smoke.iyi --no-color
+	$(IYI) check src/update.iyi --no-color
 test:
 	mkdir -p bin
 	$(IYI) build src/check.iyi -o bin/check --no-color
@@ -23,4 +33,4 @@ test-smoke:
 	$(IYI) build src/smoke.iyi -o bin/smoke --no-color
 	./bin/smoke
 clean:
-	rm -rf bin/build bin/serve bin/check bin/smoke .cache site
+	rm -rf bin/build bin/serve bin/check bin/smoke bin/update .cache site

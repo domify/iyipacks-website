@@ -134,3 +134,24 @@ def basic_string(rest : String, lineno : Int32) : String
   end
   raise "TOML: unterminated string at line #{lineno}"
 end
+
+# A TOML basic string, "...", that parse_toml reads back as *value*.
+pub def toml_string(value : String) : String
+  quoted = "\""
+  value.each_char do |c|
+    case c
+    when '"' then quoted += "\\\""
+    when '\\' then quoted += "\\\\"
+    when '\n' then quoted += "\\n"
+    when '\r' then quoted += "\\r"
+    when '\t' then quoted += "\\t"
+    else
+      if c.ord < 0x20 || c.ord == 0x7f
+        quoted += "\\u" + c.ord.to_s(16).rjust(4, '0')
+      else
+        quoted += c.to_s
+      end
+    end
+  end
+  quoted + "\""
+end

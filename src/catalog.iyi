@@ -3,19 +3,21 @@ module catalog
 import std/json::{JSON, Any}
 import std/html::{HTML}
 import std/text
+import std/time::{Time}
 import toml::{parse_toml}
+import modules::{activity, ago}
 import slang::{Slang}
 
-# Renders the whole site from data/catalog.toml into finished files. Nothing
-# here runs on the web server: `site_files` maps each output path to its
-# contents and build.iyi writes them out. The HTML is in Slang templates under
-# src/views/, compiled into this program; local variables of the method that
-# renders a template are visible in it. Links are relative and name each
-# index.html, so the site works from any directory of a host and when its files
-# are opened straight from disk. Run from the project directory.
+# Renders the whole site from data/catalog.toml and data/modules.toml into
+# finished files. Nothing here runs on the web server: `site_files` maps each
+# output path to its contents and build.iyi writes them out. The HTML is in
+# Slang templates under src/views/, compiled into this program; local
+# variables of the method that renders a template are visible in it. Links
+# are relative and name each index.html, so the site works from any directory
+# of a host and when its files are opened straight from disk. Run from the
+# project directory.
 
-# Catalog entries contain string-valued fields; validate them while preparing
-# packages.json. data/catalog.toml remains the single source of truth.
+# Catalog entries contain string-valued fields; this checks that they do.
 def json_records(records : Array(Any)) : Array(Hash(String, String))
   records.map do |record|
     fields = {} of String => String
@@ -25,14 +27,41 @@ def json_records(records : Array(Any)) : Array(Hash(String, String))
 end
 
 CATALOG = parse_toml(File.read("data/catalog.toml"))
-PACKAGES = CATALOG["packages"].as_a.sorted_by { |pack| pack["name"].as_s.downcase }
 CATEGORIES = CATALOG["categories"].as_a
-CATALOG_JSON = JSON.to_json({"categories" => json_records(CATEGORIES), "packages" => json_records(CATALOG["packages"].as_a)})
+NOW = Time.utc
+
+# The modules `make update` imported, with the [[modules]] overrides of
+# data/catalog.toml applied.
+def imported_modules : Array(Hash(String, String))
+  modules = [] of Hash(String, String)
+  return modules unless File.exists?("data/modules.toml")
+  data = parse_toml(File.read("data/modules.toml"))
+  return modules unless data["modules"]?
+  overrides = CATALOG["modules"]? ? json_records(CATALOG["modules"].as_a) : [] of Hash(String, String)
+  json_records(data["modules"].as_a).each do |record|
+    override = overrides.find { |entry| entry["repo"].downcase == record["repo"].downcase }
+    if override
+      next if override["hidden"]? == "true"
+      override.each { |key, value| record[key] = value unless key == "repo" || key == "hidden" }
+    end
+    modules << record
+  end
+  modules
+end
+
+PACKAGES = (json_records(CATALOG["packages"].as_a) + imported_modules).sorted_by { |pack| pack["name"].downcase }
+PACKAGES.each do |pack|
+  unless CATEGORIES.any? { |c| c["slug"].as_s == pack["category"] }
+    raise "catalog: #{pack["slug"]} is in an unknown category #{pack["category"].inspect}"
+  end
+end
+CATALOG_JSON = JSON.to_json({"categories" => json_records(CATEGORIES), "packages" => PACKAGES})
 STYLE = File.read("public/style.css")
 SCRIPT = File.read("public/app.js")
 CONTENT_SECURITY_POLICY = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
 FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23d1333d'/%3E%3Ctext x='18' y='46' font-size='46' font-family='monospace' fill='%23ffffff'%3Ei%3C/text%3E%3C/svg%3E"
-COMPARE_ROWS = [{"Category", "category"}, {"Compatibility", "kind"}, {"Distribution", "distribution"}, {"Description", "description"}, {"Notes", "note"}, {"Usage", "usage"}]
+COMPARE_ROWS = [{"Category", "category"}, {"Distribution", "distribution"}, {"Version", "version"}, {"Stars", "stars"}, {"Used by", "dependents"},
+                {"Contributors", "contributors"}, {"Last update", "pushed"}, {"License", "license"}, {"Description", "description"}, {"Usage", "usage"}]
 
 def esc(value : String) : String
   HTML.escape(value)
@@ -43,8 +72,40 @@ def accent(text : String) : String
   "#{esc(text)}<span class=\"accent\">.</span>"
 end
 
-def badge_class(kind : String) : String
-  kind == "Native iyi" ? "native" : "crystal"
+# A field the package may not have, such as the GitHub numbers of a
+# standard module.
+def field(pack : Hash(String, String), key : String) : String
+  pack[key]? || ""
+end
+
+def std?(pack : Hash(String, String)) : Bool
+  pack["distribution"] == "Standard library"
+end
+
+def badge(pack : Hash(String, String)) : String
+  return "Standard library" if std?(pack)
+  version = field(pack, "version")
+  version.empty? ? "No release" : version
+end
+
+def badge_class(pack : Hash(String, String)) : String
+  std?(pack) ? "std" : "module"
+end
+
+# The line of numbers on a package card.
+def summary(pack : Hash(String, String)) : String
+  return "Ships with iyi" if std?(pack)
+  parts = ["★ #{field(pack, "stars")}"]
+  parts << "used by #{field(pack, "dependents")}" unless field(pack, "dependents") == "0"
+  parts << "updated #{ago(field(pack, "pushed"), NOW)}" unless field(pack, "pushed").empty?
+  parts.join(" · ")
+end
+
+def compare_value(pack : Hash(String, String), key : String) : String
+  value = field(pack, key)
+  value = category_name(value) if key == "category"
+  value = ago(value, NOW) if key == "pushed"
+  value.empty? ? "—" : value
 end
 
 def category_name(slug : String) : String
@@ -63,11 +124,11 @@ end
 # them in the browser; a category page hides the others for readers without
 # JavaScript, whose filters are the category links.
 def listing(category : String, root : String) : String
-  chosen = PACKAGES.count { |pack| category.empty? || pack["category"].as_s == category }
+  chosen = PACKAGES.count { |pack| category.empty? || pack["category"] == category }
   Slang.render("views/listing.slang")
 end
 
-def detail(pack : Any, root : String) : String
+def detail(pack : Hash(String, String), root : String) : String
   Slang.render("views/detail.slang")
 end
 
@@ -89,7 +150,7 @@ pub def site_files : Hash(String, String)
   CATEGORIES.each do |c|
     files["categories/#{c["slug"].as_s}/index.html"] = page(c["name"].as_s, listing(c["slug"].as_s, "../../"), "../../")
   end
-  PACKAGES.each { |pack| files["packages/#{pack["slug"].as_s}/index.html"] = page(pack["name"].as_s, detail(pack, "../../"), "../../") }
+  PACKAGES.each { |pack| files["packages/#{pack["slug"]}/index.html"] = page(pack["name"], detail(pack, "../../"), "../../") }
   files["compare/index.html"] = page("Compare packages", comparison("../"), "../")
   files["about/index.html"] = page("About", about("../"), "../")
   files["404.html"] = page("Page not found", not_found("/"), "/")

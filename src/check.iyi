@@ -1,8 +1,10 @@
 module iyipacks/check
 
 import catalog::{site_files}
-import toml::{parse_toml}
+import toml::{parse_toml, toml_string}
+import modules::{module_path, requirements, gettable?, latest_version, category_for, dependents, modules_toml, activity, ago}
 import std/json::{JSON}
+import std/time::{Time}
 
 def assert_ok(condition : Bool, message : String) : Nil
   raise "FAIL: #{message}" unless condition
@@ -39,34 +41,61 @@ assert_ok(parsed["a"][0]["l"].as_s == "C:\\path", "TOML literal string")
 assert_ok(parsed["a"][0]["m"].as_s == "line1\nline2", "TOML multiline literal string")
 assert_ok(parsed["a"][1]["k"].as_s == "↗", "TOML Unicode")
 
+tricky = "a \"b\" \\ c\nd\te\u0001 é ↗"
+assert_ok(parse_toml("[[a]]\nk = #{toml_string(tricky)}\n")["a"][0]["k"].as_s == tricky, "TOML string written and read back")
+
+# What update.iyi decides about a repository and its iyi.mod.
+manifest = "\uFEFF# c\nmodule github.com/Owner/Lib\n\nrequire github.com/a/b v1.2.0 as b\nrequire github.com/c/d v0.1.0\n"
+assert_ok(module_path(manifest) == "github.com/Owner/Lib" && module_path("# none\n").nil?, "iyi.mod module path")
+assert_ok(requirements(manifest) == ["github.com/a/b", "github.com/c/d"], "iyi.mod requirements")
+assert_ok(gettable?(manifest, "owner/lib") && !gettable?(manifest, "fork/lib") && !gettable?("module iyipacks\n", "x/iyipacks"), "gettable modules")
+assert_ok(latest_version(["v1.2.0", "v1.10.0", "v1.9.9", "latest", "v2.0.0-rc.1", "1.11.0"]) == "v2.0.0-rc.1", "latest version tag")
+assert_ok(latest_version(["v1.0.0", "v1.0.0-beta"]) == "v1.0.0" && latest_version(["main"]).nil?, "latest version without tags")
+assert_ok(category_for(["iyi", "JSON"]) == "data" && category_for(["cli", "http"]) == "web" && category_for(["iyi"]) == "other", "category from topics")
+uses = dependents([{"requires" => "github.com/a/b github.com/c/d"}, {"requires" => "github.com/A/B"}, {"requires" => ""}])
+assert_ok(uses["github.com/a/b"] == 2 && uses["github.com/c/d"] == 1 && uses.size == 2, "dependents")
+written = parse_toml(modules_toml([{"repo" => "a/b", "description" => "say \"hi\""}], "2026-01-01T00:00:00Z"))
+assert_ok(written["modules"][0]["description"].as_s == "say \"hi\"" && written["modules"][0]["stars"].as_s == "", "modules.toml written")
+now = Time.parse_rfc3339("2026-10-10T12:00:00Z")
+assert_ok(activity("2026-08-01T00:00:00Z", now) == "Active" && activity("2026-01-01T00:00:00Z", now) == "Quiet" && activity("2024-01-01T00:00:00Z", now) == "Inactive", "activity")
+assert_ok(ago("2026-10-10T08:00:00Z", now) == "today" && ago("2026-10-09T08:00:00Z", now) == "1 day ago" && ago("2026-06-01T00:00:00Z", now) == "4 months ago" && ago("2023-10-01T00:00:00Z", now) == "3 years ago", "ago")
+
+# The site has every standard module of data/catalog.toml and every module
+# of data/modules.toml that an override does not hide.
+catalog = parse_toml(File.read("data/catalog.toml"))
+imported = File.exists?("data/modules.toml") ? parse_toml(File.read("data/modules.toml")) : parse_toml("")
+hidden = catalog["modules"]? ? catalog["modules"].as_a.select { |entry| entry.as_h.has_key?("hidden") && entry["hidden"].as_s == "true" }.map { |entry| entry["repo"].as_s.downcase } : [] of String
+module_count = imported["modules"]? ? imported["modules"].as_a.count { |entry| !hidden.includes?(entry["repo"].as_s.downcase) } : 0
+total = catalog["packages"].as_a.size + module_count
+web_count = catalog["packages"].as_a.count { |pack| pack["category"].as_s == "web" }
+
 files = site_files
 data = JSON.parse(files["packages.json"])
-assert_ok(data["categories"].as_a.size == 5 && data["packages"].as_a.size == 19, "catalog counts")
+categories = catalog["categories"].as_a.size
+assert_ok(data["categories"].as_a.size == categories && data["packages"].as_a.size == total, "catalog counts")
 assert_ok(data["categories"][0]["icon"].as_s == "↗", "Unicode preserved")
-kemal = data["packages"].as_a.find { |pack| pack["slug"].as_s == "kemal" }
-assert_ok(!kemal.nil?, "Kemal present in catalog")
-if kemal
-  assert_ok(kemal["usage"].as_s == "require \"kemal\"\n# Build with: iyi build --crystal src/server.iyi", "multiline example preserved")
-end
+assert_ok(data["packages"].as_a.select { |pack| pack["distribution"].as_s == "GitHub" }.size == module_count, "imported modules")
 
 home = files["index.html"]
 assert_ok(home.includes?("Good code starts") && !home.includes?("{{content}}"), "homepage")
-assert_ok(occurrences(home, "<article class=\"package\"") == 19 && hidden_cards(home) == 0, "homepage shows every card")
-assert_ok(home.includes?("19 packages"), "catalog count")
+assert_ok(occurrences(home, "<article class=\"package\"") == total && hidden_cards(home) == 0, "homepage shows every card")
+assert_ok(home.includes?("#{total} packages"), "catalog count")
 assert_ok((home.index("packages/base64/") || -1) < (home.index("packages/yaml/") || -1), "cards sorted by name")
 assert_ok(home.includes?("Content-Security-Policy") && home.includes?("script-src &#39;self&#39;"), "security policy")
 web = files["categories/web/index.html"]
-assert_ok(occurrences(web, "<article class=\"package\"") == 19 && hidden_cards(web) == 14, "category page shows 5 cards")
-assert_ok(web.includes?("5 packages") && web.includes?("<option value=\"web\" selected>"), "category page state")
+web_count += data["packages"].as_a.count { |pack| pack["distribution"].as_s == "GitHub" && pack["category"].as_s == "web" }
+assert_ok(occurrences(web, "<article class=\"package\"") == total && hidden_cards(web) == total - web_count, "category page shows its cards")
+assert_ok(web.includes?("#{web_count} packages") && web.includes?("<option value=\"web\" selected>"), "category page state")
 data["packages"].as_a.each do |pack|
   detail = files["packages/#{pack["slug"].as_s}/index.html"]? || ""
   assert_ok(detail.includes?("Get started") && detail.includes?(pack["source"].as_s), "package detail #{pack["slug"].as_s}")
 end
-assert_ok(files["packages/kemal/index.html"].includes?("require &quot;kemal&quot;"), "HTML escaping")
+assert_ok(home.includes?("Text &amp; markup") && !home.includes?("Text & markup"), "HTML escaping")
+assert_ok(files["packages/http/index.html"].includes?("Ships with iyi") || files["packages/http/index.html"].includes?("Included with iyi"), "standard module page")
 compare = files["compare/index.html"]
-assert_ok(compare.includes?("<table>") && occurrences(compare, "data-slug=\"http\"") == 7, "comparison table")
+assert_ok(compare.includes?("<table>") && occurrences(compare, "data-slug=\"http\"") == 11, "comparison table")
 ["about/index.html", "404.html", "style.css", "app.js"].each { |path| assert_ok(files.has_key?(path), "file #{path}") }
-assert_ok(files.size == 31, "file count")
+assert_ok(files.size == 7 + categories + total, "file count")
 # Every internal link, stylesheet, script and form target names a generated
 # file, so the site works from disk and from any directory of a host.
 files.each do |path, content|
@@ -83,4 +112,4 @@ files.each do |path, content|
     end
   end
 end
-puts "PASS: TOML reader, catalog data, listing and category pages, all 19 details, comparison, escaping, links and assets"
+puts "PASS: TOML reader and writer, module import rules, catalog data, listing and category pages, all #{total} details, comparison, escaping, links and assets"

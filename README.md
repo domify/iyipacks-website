@@ -2,7 +2,7 @@
 
 A package directory written in iyi, inspired by the
 [Ruby Toolbox](https://www.ruby-toolbox.com/). An iyi program reads
-`data/catalog.toml` and generates a finished static site: the web server only
+`data/catalog.toml` and `data/modules.toml` and generates a finished static site: the web server only
 serves HTML, CSS, JavaScript and JSON files. No Crystal compatibility mode is
 needed; the one dependency, the iyi module
 [domify/slang](https://github.com/domify/slang), is fetched by the first build.
@@ -27,11 +27,13 @@ whose links start from the host's root.
 
 ## Features
 
-- 19 entries: 16 iyi standard library modules and 3 Crystal ecosystem libraries.
-- 5 categories with their own pre-rendered pages, so browsing works without JavaScript.
-- Name and description search, compatibility filtering and A–Z / Z–A sorting run
+- The 16 iyi standard library modules and every iyi module found on GitHub, with
+  its stars, forks, contributors, latest version tag, last push and how many listed
+  modules require it. Crystal shards are not listed.
+- 6 categories with their own pre-rendered pages, so browsing works without JavaScript.
+- Search, category filtering and sorting by name, stars, use or last update run
   in the browser (`public/app.js`); the state is kept in the URL, e.g. `/?q=http`.
-- Package pages with import examples, source links, and compatibility notes.
+- Package pages with install commands, source links and the GitHub numbers.
 - Side-by-side comparison of up to three packages at `/compare/?p=http&p=json`
   (needs JavaScript).
 - Responsive light and dark themes matching iyi.dev, visible keyboard focus, and a `/` search shortcut.
@@ -40,9 +42,39 @@ whose links start from the host's root.
 
 ## Updating the catalog
 
-Edit `data/catalog.toml` and run `make build`. Changes to data, `style.css` or
-`app.js` need only `./bin/build`; templates are compiled into the generator, so
-`make build` recompiles it.
+```sh
+GITHUB_TOKEN=… make update   # finds the iyi modules on GitHub, writes data/modules.toml
+make build
+```
+
+The token may also be kept in `.env` in the project root, as a line
+`GITHUB_TOKEN=…`; git ignores that file and the Makefile reads it. A
+fine-grained token with read-only access to public repositories and no
+permissions is enough.
+
+`make update` (`src/update.iyi`) looks at three kinds of repository: those
+with an `iyi.mod` at their root, found by GitHub code search; those with the
+topic `iyi`; and the `repo` of each `[[modules]]` entry in `data/catalog.toml`.
+It keeps a repository that is not archived and whose `iyi.mod` says
+`module github.com/OWNER/REPO` for itself, as `iyi get` requires; that leaves
+out applications, whose `iyi.mod` names no repository, and forks that only copy
+a module. For each it records the repository's numbers, the highest
+`vMAJOR.MINOR.PATCH` tag and its date, the number of contributors (up to 100),
+and the modules its `iyi.mod` requires, from which "used by" is counted. The
+category comes from the repository's topics, or is `other`.
+
+The requests go through `curl`, as iyi's HTTP client has no TLS, and the token
+is given to curl on its standard input. Without `GITHUB_TOKEN` code search is
+skipped and GitHub allows 60 requests an hour, enough for a handful of modules.
+When GitHub does not answer for a module, its record from the last run is kept;
+a refused token or the rate limit stops the run without writing anything.
+
+`data/modules.toml` is generated; do not edit it. A `[[modules]]` entry in
+`data/catalog.toml` with the same `repo` replaces any field of the import, such
+as `category` or `description`, at build time; `hidden = "true"` leaves the
+module out. Edit `data/catalog.toml` for the categories and the standard
+library. Changes to data, `style.css` or `app.js` need only `./bin/build`;
+templates are compiled into the generator, so `make build` recompiles it.
 
 ## Templates
 
@@ -51,13 +83,13 @@ templates for iyi, under `src/views/`:
 
 ```slim
 section.detail
-  h1== accent(pack["name"].as_s)
-  p.lead= pack["description"].as_s
-  - if kind == "Native iyi"
+  h1!= accent(pack["name"])
+  p.lead= pack["description"]
+  - if std?(pack)
     p Included with iyi.
 ```
 
-`= expr` writes escaped output, `== expr` raw HTML, `- code` runs iyi code, and
+`= expr` writes escaped output, `!= expr` raw HTML, `- code` runs iyi code, and
 `| text` is HTML text, in which `#{expr}` is escaped. Local variables of the
 method that renders a template are visible in it. As in Slim, there is no
 whitespace between tags: `' text` ends the text with a space, and `tag>` or
@@ -66,29 +98,24 @@ whitespace between tags: `' text` ends the text with a space, and `tag>` or
 Slang is required in `src/iyi.mod` (short name `slang`, pinned in
 `src/iyi.sum`); `iyi get -u` in `src/` moves it to its latest release. Templates
 are compiled into the generator by the `Slang.render` macro. See its README for
-the full syntax. An attribute value without quotes ends at the first space
+the full syntax, and its `TEMPLATES.md` for what differs from Slim. An attribute value without quotes ends at the first space
 outside parentheses, so compute longer expressions in a `- name = …` line
 first, and keep a space before `=` output after such a value.
 
 iyi has no TOML module, so `src/toml.iyi` reads the subset the catalog uses:
-comments, `[[categories]]` / `[[packages]]` arrays of tables, and bare keys with
+comments, arrays of tables such as `[[packages]]`, and bare keys with
 `"basic"` (with escapes), `'literal'` and `'''multiline literal'''` string values.
 Anything else — numbers, inline tables, duplicate keys — stops the build with
-its line number. Category and package fields must be strings.
+its line number. Every field is a string, the imported numbers too; `toml_string`
+writes them for `make update`.
 
-`Native iyi` entries are standard library modules, rather than separately
-installable packages. `Crystal compatible` entries refer to the Crystal ecosystem:
-they require shard dependencies and the `iyi build --crystal` mode. Check
-compatibility for each library version you choose.
-
-This is a curated starter catalog, not a package registry. GitHub stars,
-downloads, releases, and maintenance metrics have not been collected.
+Downloads are not counted: `iyi get` fetches from git, which no one can see.
 
 ## Validation
 
 ```sh
 make check       # Static checking of the generator, preview server and smoke test
-make test        # Native iyi tests of the TOML reader and every generated page
+make test        # Native iyi tests of the TOML reader and writer, the import rules and every generated page
 make test-smoke  # iyi end-to-end test: build, serve over HTTP, drive headless Chrome
 ```
 
@@ -102,13 +129,15 @@ use another binary. Without a browser, it skips those checks and says so.
 
 - `src/build.iyi`: writes the generated files.
 - `src/catalog.iyi`: page data and helpers; renders the templates.
+- `src/update.iyi`: the GitHub import; `src/modules.iyi`: its rules, and the dates shown.
 - `src/views/`: Slang templates for the layout and every page.
 - `src/iyi.mod`, `src/iyi.sum`: the Slang dependency.
-- `src/toml.iyi`: the TOML subset reader.
+- `src/toml.iyi`: the TOML subset reader, and the string writer.
 - `src/serve.iyi`, `src/static.iyi`: the local preview server.
 - `src/check.iyi`, `src/smoke.iyi`: site tests.
 - `public/`: CSS and JavaScript.
-- `data/catalog.toml`: categories and package entries.
+- `data/catalog.toml`: categories, the standard library, and module overrides.
+- `data/modules.toml`: the modules `make update` imported.
 
 ## Design and verification limitations
 

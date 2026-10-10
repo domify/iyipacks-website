@@ -16,13 +16,12 @@ section.detail#compare-result hidden=true
         tr
           th scope="col" Package
           - PACKAGES.each do |pack|
-            - slug = pack["slug"].as_s
+            - slug = pack["slug"]
             th scope="col" data-slug=slug hidden=true
-              a href="#{root}packages/#{slug}/index.html"= "#{pack["name"].as_s} ↗"
+              a href="#{root}packages/#{slug}/index.html"= "#{pack["name"]} ↗"
       tbody
         - COMPARE_ROWS.each do |row|
           tr
             th scope="row"= row[0]
             - PACKAGES.each do |pack|
-              - value = row[1] == "category" ? category_name(pack["category"].as_s) : pack[row[1]].as_s
-              td data-slug=pack["slug"].as_s hidden=true = value
+              td data-slug=pack["slug"] hidden=true = compare_value(pack, row[1])

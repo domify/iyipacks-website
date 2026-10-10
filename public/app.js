@@ -15,23 +15,30 @@ if (filters && grid) {
   const cards = [...grid.querySelectorAll('.package')];
   const title = document.querySelector('#results-title');
   const params = new URLSearchParams(location.search);
-  for (const name of ['q', 'category', 'kind', 'sort']) {
+  for (const name of ['q', 'category', 'sort']) {
     if (params.has(name)) filters.elements[name].value = params.get(name);
   }
+  // The cards come sorted by name; the other orders put the highest first,
+  // and a standard module, which has no GitHub numbers, last.
+  const number = value => (value === '' ? -1 : Number.parseInt(value, 10));
+  const orders = {
+    name: () => cards,
+    reverse: () => [...cards].reverse(),
+    stars: () => [...cards].sort((a, b) => number(b.dataset.stars) - number(a.dataset.stars)),
+    used: () => [...cards].sort((a, b) => number(b.dataset.used) - number(a.dataset.used)),
+    updated: () => [...cards].sort((a, b) => b.dataset.updated.localeCompare(a.dataset.updated)),
+  };
   const apply = () => {
     const query = filters.elements.q.value.trim().toLowerCase();
     const category = filters.elements.category.value;
-    const kind = filters.elements.kind.value;
-    const reverse = filters.elements.sort.value === 'reverse';
     let shown = 0;
     for (const card of cards) {
       const match = (!query || card.dataset.search.includes(query)) &&
-        (!category || card.dataset.category === category) &&
-        (!kind || card.dataset.kind === kind);
+        (!category || card.dataset.category === category);
       card.hidden = !match;
       if (match) shown += 1;
     }
-    (reverse ? [...cards].reverse() : cards).forEach(card => grid.append(card));
+    (orders[filters.elements.sort.value] || orders.name)().forEach(card => grid.append(card));
     document.querySelector('#results-count').textContent = `${shown} packages`;
     document.querySelector('#empty').hidden = shown > 0;
     const select = filters.elements.category;
@@ -42,7 +49,7 @@ if (filters && grid) {
     event.preventDefault();
     apply();
     const state = new URLSearchParams();
-    for (const name of ['q', 'category', 'kind', 'sort']) {
+    for (const name of ['q', 'category', 'sort']) {
       const value = filters.elements[name].value.trim();
       if (value && !(name === 'sort' && value === 'name')) state.set(name, value);
     }

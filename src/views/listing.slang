@@ -11,7 +11,7 @@ section.hero
     p
       ' Find your next building block. Explore the iyi standard library
       br.desktop
-      | and the Crystal ecosystem, all in one place.
+      | and every iyi module on GitHub, all in one place.
     a.text-link href="#catalog"
       | Explore the collection
       span ↓
@@ -28,7 +28,7 @@ section.hero
 .stats
   span
     b>= PACKAGES.size
-    | curated packages
+    | packages
   span
     b>= CATEGORIES.size
     | categories
@@ -49,11 +49,11 @@ section#catalog.catalog
       - active = category == slug ? "active" : ""
       a.category-link class=active href="#{root}categories/#{slug}/index.html#catalog"
         span= "#{c["icon"].as_s} \u00a0 #{c["name"].as_s}"
-        span= PACKAGES.count { |pack| pack["category"].as_s == slug }
+        span= PACKAGES.count { |pack| pack["category"] == slug }
     .aside-note
       span ↗
       h3 Made for builders.
-      p Standard modules and ecosystem libraries, with clear compatibility notes.
+      p The standard library and the iyi modules on GitHub, with their numbers.
       a href="#{root}about/index.html" About this directory →
 
   .results
@@ -72,35 +72,34 @@ section#catalog.catalog
         - CATEGORIES.each do |c|
           - selected = category == c["slug"].as_s
           option value=c["slug"].as_s selected=selected = c["name"].as_s
-      select name="kind" aria-label="Compatibility"
-        option value="" All types
-        option Native iyi
-        option Crystal compatible
       select name="sort" aria-label="Sort order"
         option value="name" Name A–Z
         option value="reverse" Name Z–A
+        option value="stars" Most stars
+        option value="used" Most used
+        option value="updated" Recently updated
       button type="submit" Search →
 
     .catalog-note
       span.dot
-      | Hand-curated. Compatibility explained. No invented popularity scores.
+      | Numbers from GitHub, as imported. No invented popularity scores.
 
     .package-grid#package-grid
       - PACKAGES.each do |pack|
-        - slug = pack["slug"].as_s
-        - kind = pack["kind"].as_s
-        - pack_category = pack["category"].as_s
-        - search = "#{pack["name"].as_s} #{slug} #{pack["description"].as_s}".downcase
+        - slug = pack["slug"]
+        - pack_category = pack["category"]
+        - search = "#{pack["name"]} #{slug} #{pack["description"]} #{field(pack, "topics")}".downcase
         - visible = category.empty? || pack_category == category
-        article.package data-search=search data-category=pack_category data-kind=kind hidden=!visible
+        article.package data-search=search data-category=pack_category data-stars=field(pack, "stars") data-used=field(pack, "dependents") data-updated=field(pack, "pushed") hidden=!visible
           .package-top
             span.package-icon= slug[0, 1]
-            span.badge class=badge_class(kind) = kind
+            span.badge class=badge_class(pack) = badge(pack)
           h3
             a href="#{root}packages/#{slug}/index.html"
-              = pack["name"].as_s
+              = pack["name"]
               span ↗
-          p= pack["description"].as_s
+          p= pack["description"]
+          p.package-stats= summary(pack)
           .package-bottom
             a href="#{root}categories/#{pack_category}/index.html#catalog"= category_name(pack_category)
             label data-js=true hidden=true
