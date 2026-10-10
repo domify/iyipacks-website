@@ -1,1 +1,0 @@
-span class=klass Foo
