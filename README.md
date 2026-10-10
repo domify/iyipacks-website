@@ -45,26 +45,34 @@ Edit `data/catalog.toml` and run `make build`. Changes to data, `style.css` or
 
 ## Templates
 
-The HTML is written in [Slang](https://github.com/jeromegn/slang), the Slim
+The HTML is written in [Slang](https://github.com/toddsundsted/slang), the Slim
 template language of the Crystal ecosystem, under `src/views/`:
 
 ```slim
 section.detail
-  h1 == accent(pack["name"].as_s)
-  p.lead = pack["description"].as_s
+  h1== accent(pack["name"].as_s)
+  p.lead= pack["description"].as_s
   - if kind == "Native iyi"
     p Included with iyi.
 ```
 
 `= expr` writes escaped output, `== expr` raw HTML, `- code` runs iyi code, and
-`| text` is text. Local variables of the method that renders a template are
-visible in it. Slang 1.7.3 is ported to native iyi in `src/slang.iyi` (run time)
-and `src/slang/process.iyi` (compile time: lexer, parser and code generation,
-run by the `Slang.render` macro the way iyi's own `Eiy` runs), under its MIT
-license in `src/slang/LICENSE`. Differences from the Crystal original:
-attribute values are HTML-escaped (not only `"`), and `= expr do` with a nested
-block is not supported. As in the original, an attribute value ends at the
-first space, so compute longer expressions in a `- name = …` line first.
+`| text` is HTML text, in which `#{expr}` is escaped. Local variables of the
+method that renders a template are visible in it. As in Slim, there is no
+whitespace between tags: `' text` ends the text with a space, and `tag>` or
+`=>` puts one after the tag or output (`<` before it).
+
+Slang 2.0.3 (toddsundsted/slang, the maintained fork of jeromegn/slang) is
+ported to native iyi in `src/slang.iyi` (run time) and `src/slang/process.iyi`
+(compile time: lexer, parser and code generation, run by the `Slang.render`
+macro the way iyi's own `Eiy` runs), under its MIT license in
+`src/slang/LICENSE`. Differences from the Crystal original: an attribute whose
+value is `false` or `nil` is left out, blank class names are dropped, `=<` and
+`=>` really add a space, `iyi:` opens a code block like `crystal:`, and
+attributes after `a(href="x")` no longer stop the template. `begin`/`rescue`
+lines parse but do not compile, as iyi has no exceptions. An attribute value
+ends at the first space outside parentheses, so compute longer expressions in a
+`- name = …` line first.
 
 iyi has no TOML module, so `src/toml.iyi` reads the subset the catalog uses:
 comments, `[[categories]]` / `[[packages]]` arrays of tables, and bare keys with
@@ -84,7 +92,7 @@ downloads, releases, and maintenance metrics have not been collected.
 
 ```sh
 make check       # Static checking of the generator, preview server and smoke test
-make test        # Native iyi tests of the TOML reader and every generated page
+make test        # Native iyi tests of Slang, the TOML reader and every generated page
 make test-smoke  # iyi end-to-end test: build, serve over HTTP, drive headless Chrome
 ```
 
@@ -100,9 +108,10 @@ use another binary. Without a browser, it skips those checks and says so.
 - `src/catalog.iyi`: page data and helpers; renders the templates.
 - `src/views/`: Slang templates for the layout and every page.
 - `src/slang.iyi`, `src/slang/`: the Slang template language, ported to iyi.
+- `src/slang_check.iyi`, `src/slang/spec/`: Slang's own tests and templates.
 - `src/toml.iyi`: the TOML subset reader.
 - `src/serve.iyi`, `src/static.iyi`: the local preview server.
-- `src/check.iyi`, `src/smoke.iyi`: tests.
+- `src/check.iyi`, `src/smoke.iyi`: site tests.
 - `public/`: CSS and JavaScript.
 - `data/catalog.toml`: categories and package entries.
 

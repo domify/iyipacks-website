@@ -13,8 +13,11 @@ check:
 	$(IYI) check src/build.iyi --no-color
 	$(IYI) check src/serve.iyi --no-color
 	$(IYI) check src/smoke.iyi --no-color
+	$(IYI) check src/slang_check.iyi --no-color
 test:
 	mkdir -p bin
+	$(IYI) build src/slang_check.iyi -o bin/slang_check --no-color
+	./bin/slang_check
 	$(IYI) build src/check.iyi -o bin/check --no-color
 	./bin/check
 test-smoke:
@@ -23,4 +26,4 @@ test-smoke:
 	$(IYI) build src/smoke.iyi -o bin/smoke --no-color
 	./bin/smoke
 clean:
-	rm -rf bin/build bin/serve bin/check bin/smoke .cache site
+	rm -rf bin/build bin/serve bin/check bin/slang_check bin/smoke .cache site

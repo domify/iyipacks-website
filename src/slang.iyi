@@ -1,6 +1,7 @@
 # Slang: Slim-style templates, ported to iyi from the Crystal shard
-# jeromegn/slang 1.7.3 (https://github.com/jeromegn/slang, MIT License,
-# Copyright (c) 2016 Jerome Gravel-Niquet; see src/slang/LICENSE).
+# toddsundsted/slang 2.0.3 (https://github.com/toddsundsted/slang), a fork
+# of jeromegn/slang (https://github.com/jeromegn/slang); MIT License,
+# Copyright (c) 2016 Jerome Gravel-Niquet; see src/slang/LICENSE.
 #
 # Like the original, a template becomes code at compile time: `Slang.embed`
 # and `Slang.render` run `slang/process` (src/slang/process.iyi), which parses
@@ -11,22 +12,31 @@
 #     doctype html
 #     html
 #       body
-#         h1.title = title          / escaped output
-#         div == content            / raw output
+#         h1.title= title          / escaped output
+#         div== content            / raw output
 #         - items.each do |item|
-#           a href="#{root}#{item}" = item
+#           a href="#{root}#{item}"= item
 #         input type="checkbox" checked=selected
+#         p Hello, #{name}!         / text is HTML; #{} in it is escaped
+#
+# As in Slim, the HTML has no whitespace between tags: `'` ends text with a
+# space, and `tag<` / `tag>` / `=<` / `=>` put one before / after.
 #
 # Differences from the Crystal original:
-#   * Output and text are escaped with iyi's HTML.escape; an attribute value
-#     is escaped the same way (the original replaced only `"`).
 #   * An attribute whose value is `false` or `nil` is left out and `true`
-#     writes the bare name, through `Slang.attribute` instead of inline code.
-#   * `= expr do` with a nested block is refused: iyi has no `String.build`
-#     block the original wrapped it in.
+#     writes the bare name, through `Slang.attribute`; this includes `id`,
+#     and the entries of a `*splat` hash.
+#   * Blank class names are left out of `class`, and an element whose
+#     class names are all blank has no `class`.
+#   * `=<` and `=>` put a space before and after the output (the original
+#     added it to the code instead), and `iyi:` opens a code block like
+#     `crystal:`.
+#   * After `a(href="x")`, attributes of later elements no longer stop the
+#     template with "Missing hash key: ')'".
 module slang
 
 import std/html::{HTML}
+import std/text
 
 pub struct Slang
   # Collects what a template writes, for `render`.
@@ -51,15 +61,29 @@ pub struct Slang
     HTML.escape(value.to_s)
   end
 
-  def self.attribute(buffer : Buffer, name : String, value : Bool) : Nil
+  def self.attribute(buffer, name : String, value : Bool) : Nil
     buffer << " " << name if value
   end
 
-  def self.attribute(buffer : Buffer, name : String, value : Nil) : Nil
+  def self.attribute(buffer, name : String, value : Nil) : Nil
   end
 
-  def self.attribute(buffer : Buffer, name : String, value) : Nil
+  def self.attribute(buffer, name : String, value) : Nil
     buffer << " " << name << "=\"" << HTML.escape(value.to_s) << "\""
+  end
+
+  # The class names of an element, its `.name`s, `class=` values and the
+  # `class` of a splat, without the blank ones.
+  def self.class_attribute(buffer, values : Array(String)) : Nil
+    names = values.reject(&.blank?)
+    buffer << " class=\"" << HTML.escape(names.join(" ")) << "\"" unless names.empty?
+  end
+
+  # A `*splat` hash: every entry but `class` as an attribute.
+  def self.splat(buffer, attributes) : Nil
+    attributes.each do |name, value|
+      attribute(buffer, name.to_s, value) unless name.to_s == "class"
+    end
   end
 
   # Splices the template at *filename* here; its code writes to *buffer*.

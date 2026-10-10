@@ -1,0 +1,321 @@
+module iyipacks/slang_check
+
+# The Crystal shard's spec/slang_spec.cr (toddsundsted/slang 2.0.3), with
+# its templates under src/slang/spec/. `Process.pid` is a local `pid` there,
+# as iyi has none. Left out: begin/rescue, as iyi has no exceptions, and
+# Kemal's content_for. The last three templates test what the port fixes.
+
+import slang::{Slang}
+
+class Form
+  def text_input(name)
+    "<input type=\"text\" name=\"#{name.to_s}\" \\>"
+  end
+end
+
+def form_for
+  form = Form.new
+  String.build do |io|
+    io << "<form>"
+    io << yield form
+    io << "</form>"
+  end
+end
+
+def p(value)
+  value
+end
+
+def evaluates_to_true
+  1 == 1
+end
+
+def evaluates_to_false
+  1 == 2
+end
+
+def evaluates_to_hello
+  "hello"
+end
+
+def basic
+  pid = 4242
+  Slang.render("slang/spec/basic.slang")
+end
+
+def utf8
+  Slang.render("slang/spec/utf8.slang")
+end
+
+def edge_control
+  prefix = "my"
+  Slang.render("slang/spec/edge-control.slang")
+end
+
+def edge_control_escaped
+  prefix = "my"
+  Slang.render("slang/spec/edge-control-escaped.slang")
+end
+
+def edge_output
+  var = "x"
+  Slang.render("slang/spec/edge-output.slang")
+end
+
+def edge_output_escaped
+  var = "x"
+  Slang.render("slang/spec/edge-output-escaped.slang")
+end
+
+def attr_string
+  Slang.render("slang/spec/attr-string.slang")
+end
+
+def attr_string_spaces
+  Slang.render("slang/spec/attr-string-spaces.slang")
+end
+
+def attr_dynamic_class
+  klass = "my-class"
+  Slang.render("slang/spec/attr-dynamic-class.slang")
+end
+
+def attr_call
+  Slang.render("slang/spec/attr-call.slang")
+end
+
+def attr_parentheses
+  Slang.render("slang/spec/attr-parentheses.slang")
+end
+
+def attr_once
+  klass = ""
+  type = ""
+  Slang.render("slang/spec/attr-once.slang")
+end
+
+def attr_join_class
+  Slang.render("slang/spec/attr-join-class.slang")
+end
+
+def attr_join_splat
+  attrs = {"class" => "bar", "id" => "baz"}
+  Slang.render("slang/spec/attr-join-splat.slang")
+end
+
+def attr_blank_class
+  Slang.render("slang/spec/attr-blank-class.slang")
+end
+
+def attr_escape(val : String)
+  Slang.render("slang/spec/attr-escape.slang")
+end
+
+def interpolation_attr
+  person = {"name" => "cris"}
+  Slang.render("slang/spec/interpolation-attr.slang")
+end
+
+def attr_equals
+  Slang.render("slang/spec/attr-equals.slang")
+end
+
+def attr_splat
+  attrs = {"class" => "foo", "id" => "bar"}
+  Slang.render("slang/spec/attr-splat.slang")
+end
+
+def output
+  Slang.render("slang/spec/output.slang")
+end
+
+def output_escape
+  Slang.render("slang/spec/output-escape.slang")
+end
+
+def output_raw
+  Slang.render("slang/spec/output-raw.slang")
+end
+
+def html_inline
+  Slang.render("slang/spec/html-inline.slang")
+end
+
+def html_nested
+  Slang.render("slang/spec/html-nested.slang")
+end
+
+def text_inline
+  Slang.render("slang/spec/text-inline.slang")
+end
+
+def text_nested
+  Slang.render("slang/spec/text-nested.slang")
+end
+
+def text_quotes
+  Slang.render("slang/spec/text-quotes.slang")
+end
+
+def nest_text
+  Slang.render("slang/spec/nest-text.slang")
+end
+
+def nest_comment
+  Slang.render("slang/spec/nest-comment.slang")
+end
+
+def nest_elements
+  Slang.render("slang/spec/nest-elements.slang")
+end
+
+def nest_multiline
+  Slang.render("slang/spec/nest-multiline.slang")
+end
+
+def raw_html
+  pid = 4242
+  Slang.render("slang/spec/raw-html.slang")
+end
+
+def if_elsif_else
+  Slang.render("slang/spec/if-elsif-else.slang")
+end
+
+def case_in
+  Slang.render("slang/spec/case-in.slang")
+end
+
+def case_when
+  Slang.render("slang/spec/case-when.slang")
+end
+
+def double_quotes
+  Slang.render("slang/spec/double-quotes.slang")
+end
+
+def svg
+  Slang.render("slang/spec/svg.slang")
+end
+
+def script
+  Slang.render("slang/spec/script.slang")
+end
+
+def style
+  Slang.render("slang/spec/style.slang")
+end
+
+def blocks
+  Slang.render("slang/spec/blocks.slang")
+end
+
+def form_helper
+  Slang.render("slang/spec/form-helper.slang")
+end
+
+def boolean_attributes
+  Slang.render("slang/spec/boolean-attributes.slang")
+end
+
+def attribute_wrappers
+  pid = 4242
+  Slang.render("slang/spec/attribute-wrappers.slang")
+end
+
+def inline_tags
+  Slang.render("slang/spec/inline-tags.slang")
+end
+
+def whitespace
+  Slang.render("slang/spec/whitespace.slang")
+end
+
+def multiline
+  Slang.render("slang/spec/multiline.slang")
+end
+
+def crystal
+  Slang.render("slang/spec/crystal.slang")
+end
+
+def wrapper_then_attribute
+  Slang.render("slang/spec/wrapper-then-attribute.slang")
+end
+
+def output_whitespace
+  Slang.render("slang/spec/output-whitespace.slang")
+end
+
+def iyi_code
+  Slang.render("slang/spec/iyi-code.slang")
+end
+
+same = "<div><span>this guy is nested</span><span>deeply nested</span><span>true is just true man</span></div>"
+wrapped = "<div hello=\"world\" foo=\"bar\"></div>"
+links = "<ul><li class=\"first\"><a href=\"/a\">A link</a></li><li><a href=\"/b\">B link</a></li></ul>"
+numbers = "<p>1</p><p>2</p><p>3</p>"
+form = "<form><input type=\"text\" name=\"hello\" \\><input type=\"submit\"></form>"
+cases = [
+  {"basic document", basic, "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>This is a title</title><style>h1 {color: red;}\np {color: green;}</style><style>h2 {color: blue;}</style></head><body><!--Multi-line comment<span>this is wrapped in a comment</span>\n--><!--[if IE]><p>Dat browser is old.</p>\n<![endif]--><h1>This is a slang file</h1><h2>This is blue</h2><span id=\"some-id\" class=\"classname\"><div id=\"hello\" class=\"world world2\"><span><span data-some-var=\"hello world haha\" two-attr=\"fun\">and a hello</span><span><span class=\"deep_nested\"><p>text inside of <p></p>4242text nodeother text node </span></span></span><span class=\"alongside\" pid=\"4242\"><custom-tag id=\"with-id\" pid=\"4242\"><span>ah</span><span>oh</span></custom-tag></span></div></span><div id=\"amazing-div\" some-attr=\"hello\"></div><!--This is a visible comment--><script>var num1 = 8*4;</script><script>var num2 = 8*3;\nalert(\"8 * 3 + 8 * 4 = \" + (num1 + num2));</script></body></html>"},
+  {"UTF-8 text", utf8, "<!DOCTYPE html><html><head><title>Привет, мир</title></head><body><p>Предложение</p></body></html>"},
+  {"control code after interpolation", edge_control, "<span>my</span>"},
+  {"escaped control code", edge_control_escaped, "<span>my-5</span>"},
+  {"output after interpolation", edge_output, "<code>x5</code>"},
+  {"escaped output", edge_output_escaped, "<code>x=5</code>"},
+  {"string attribute", attr_string, "<span attr=\"hello\"></span>"},
+  {"string attribute with spaces", attr_string_spaces, "<span attr=\"hello world\"></span>"},
+  {"dynamic class", attr_dynamic_class, "<span class=\"my-class\">Foo</span>"},
+  {"call in attribute", attr_call, "<span class=\"foo\"></span>"},
+  {"parentheses in attribute", attr_parentheses, "<span class=\"foo\"></span>"},
+  {"attributes evaluated once", attr_once, "<span class=\"foo\" type=\"bar\"></span>"},
+  {"joined classes", attr_join_class, "<span class=\"foo bar\"></span>"},
+  {"classes joined with a splat", attr_join_splat, "<span class=\"foo bar\" id=\"baz\"></span>"},
+  {"blank class", attr_blank_class, "<span class=\"quuz\"></span>"},
+  {"escaped attribute", attr_escape(%{"Hello" & world}), "<span attr=\"&quot;Hello&quot; &amp; world\"></span>"},
+  {"escaped escaped attribute", attr_escape(%{&quot;Hello&quot; & world}), "<span attr=\"&amp;quot;Hello&amp;quot; &amp; world\"></span>"},
+  {"quotes in interpolated attribute", interpolation_attr, "<input name=\"cris\" value=\"hello\">"},
+  {"= at the end of an attribute", attr_equals, "<h1 id=\"asdf=\">Hello</h1>"},
+  {"splat attributes", attr_splat, "<span class=\"foo\" id=\"bar\"></span>"},
+  {"output", output, "<div>hello</div>"},
+  {"escaped output with =", output_escape, "<div>&lt;ah&gt;</div>"},
+  {"raw output with ==", output_raw, "<div><ah></div>"},
+  {"inline HTML", html_inline, "<div><ah></div>"},
+  {"nested HTML", html_nested, "<div><ah></div>"},
+  {"inline text", text_inline, "<ah>"},
+  {"nested text", text_nested, "<ah>"},
+  {"quotes in text", text_quotes, "<div>\"ah\"</div>"},
+  {"nested text without indentation", nest_text, "<div class=\"one\"><div class=\"two\"><ah></div></div>"},
+  {"nested comment without indentation", nest_comment, "<div class=\"one\"><div class=\"two\"><!--Comment--></div></div>"},
+  {"nested elements without indentation", nest_elements, "<a><b><c><d></d></c></b></a>"},
+  {"multiline text indentation", nest_multiline, "<a><b>A\nB\n  C</b></a>"},
+  {"raw HTML", raw_html, "<table><tr><td>4242</td></tr></table>"},
+  {"if elsif else", if_elsif_else, same},
+  {"case in", case_in, "<div><span>\"int\" is 123</span></div>"},
+  {"case when", case_when, same},
+  {"double quotes", double_quotes, "<div><span>\"hello\"</span><span>\"hello\" world</span><span>\"hello\" \"world\"</span><span>\"hello world\"</span><span>\"hello world\"</span><span>\"hello world\"</span><span>&quot;hello world&quot;</span><span>&quot;hello world&quot;</span><span>&quot;hello world&quot;</span></div>"},
+  {"svg attributes with colons", svg, "<div><svg width=\"256\" height=\"448\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><defs><path id=\"shape1\" d=\"M184 144q0 3.25-2.375\"></path><path id=\"shape2\" d=\"M184 144q0 3.25-2.375\"></path></defs></svg></div>"},
+  {"javascript", script, "<script src=\"https://somecdn/vue.min.js\"></script><script>var num = 8*3;\nconsole.log(num);</script><script>var num = 8*4;</script><script>new Vue({\n  el: '#app',\n  template: `\n    <div>\n      something\n    </div>\n  `\n})</script>"},
+  {"stylesheets", style, "<style>h1 {color:red;}\np {\n  color:blue;\n}</style><style>h2 {color:green;}</style>"},
+  {"blocks", blocks, "#{numbers}<div>#{numbers}</div><div>#{numbers}</div>"},
+  {"output with a block", form_helper, "#{form}<div>#{form}</div><div>#{form}</div>"},
+  {"boolean attributes", boolean_attributes, "<input type=\"checkbox\" checked><input type=\"checkbox\"><input type=\"checkbox\" checked=\"checked\"><input type=\"checkbox\" checked><input type=\"checkbox\"><input type=\"checkbox\" checked=\"hello\">"},
+  {"attribute wrappers", attribute_wrappers, "#{wrapped}#{wrapped}#{wrapped}<div hello=\"4242\"></div>#{wrapped}#{wrapped}"},
+  {"inline tags", inline_tags, "#{links}#{links}"},
+  {"leading and trailing whitespace", whitespace, "<div><span>1</span> <span>2</span> <span>3</span></div>"},
+  {"multiline verbatim text", multiline, "Line one.\nLine two.\n  <img>Line three.\nLine four.\n  <br> <div></div>"},
+  {"crystal: code", crystal, "<p class=\"aa bb cc\"></p>"},
+  {"attributes after a wrapper", wrapper_then_attribute, "<a href=\"x\">Link</a><b title=\"y\">Bold</b>"},
+  {"=< and => whitespace", output_whitespace, "<p>x yz </p>"},
+  {"iyi: code", iyi_code, "<p class=\"aa bb\"></p>"},
+]
+
+failures = cases.reject { |test| test[1] == test[2] }
+failures.each do |test|
+  puts "FAIL: Slang #{test[0]}\n  expected #{test[2].inspect}\n       got #{test[1].inspect}"
+end
+if failures.empty?
+  puts "PASS: Slang, #{cases.size} cases of the original's specs and the port's fixes"
+else
+  exit 1
+end
