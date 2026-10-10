@@ -1,0 +1,27 @@
+module static
+
+import std/file
+import std/http::{Request, Response}
+
+# Answers requests from the generated files under *root*, the way a static
+# web host would: `/x/` is `x/index.html`, a missing file is 404.html with
+# status 404, and only GET and HEAD are allowed. For local preview and tests;
+# production can use any static host.
+CONTENT_TYPES = {"html" => "text/html; charset=utf-8", "css" => "text/css; charset=utf-8", "js" => "text/javascript; charset=utf-8", "json" => "application/json; charset=utf-8"}
+
+pub def serve_file(root : String, request : Request) : Response
+  headers = {"X-Content-Type-Options" => "nosniff"}
+  unless request.method == "GET" || request.method == "HEAD"
+    headers["Allow"] = "GET, HEAD"
+    return Response.new(405, "Method not allowed", headers)
+  end
+  path = request.path
+  path += "index.html" if path.ends_with?("/")
+  file = "#{root}#{path}"
+  found = path.starts_with?("/") && !path.includes?("..") && !path.includes?("\\") && File.file?(file)
+  status = found ? 200 : 404
+  file = "#{root}/404.html" unless found
+  extension = file[(file.rindex('.') || -1) + 1, file.size]
+  headers["Content-Type"] = CONTENT_TYPES[extension]? || "application/octet-stream"
+  Response.new(status, File.read(file), headers)
+end

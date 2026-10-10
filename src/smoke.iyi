@@ -1,0 +1,143 @@
+module iyipacks/smoke
+
+import std/file
+import std/dir::{Dir}
+import std/http::{HTTP, Server, Response}
+import std/socket::{IyiSocket}
+import std/process::{Process, ProcessResult}
+import static::{serve_file}
+
+# Runs bin/build on bad TOML and on the real catalog, serves the generated
+# site over HTTP with the preview server's handler, and drives it in headless
+# Chrome so app.js's search, filters, sorting and comparison are exercised.
+# CHROME names the browser; google-chrome, chromium and chromium-browser are
+# tried otherwise.
+
+def assert_ok(condition : Bool, message : String) : Nil
+  raise "FAIL: #{message}" unless condition
+end
+
+def run(command : String, args : Array(String), chdir : String? = nil, env : Hash(String, String)? = nil) : ProcessResult
+  result = Process.run(command, args, chdir: chdir, env: env)
+  raise "FAIL: cannot run #{command}" unless result.is_a?(ProcessResult)
+  result
+end
+
+def fetch(url : String, method : String = "GET") : Response
+  got = HTTP.request(method, url)
+  raise "FAIL: #{method} #{url}" unless got.is_a?(Response)
+  got
+end
+
+def browse(chrome : String, url : String) : String
+  dom = run(chrome, ["--headless", "--disable-gpu", "--no-first-run", "--dump-dom", url]).stdout
+  assert_ok(dom.includes?("</html>"), "Chrome rendered #{url}")
+  dom
+end
+
+# Slugs of the package cards app.js left visible, in page order.
+def visible_cards(dom : String) : Array(String)
+  slugs = [] of String
+  dom.split("<article class=\"package\"").each_with_index do |chunk, n|
+    next if n == 0 || chunk.split(">", 2)[0].ends_with?("hidden=\"\"")
+    slugs << chunk.split("href=\"/packages/", 2)[1].split("/", 2)[0]
+  end
+  slugs
+end
+
+def visible_columns(dom : String) : Array(String)
+  slugs = [] of String
+  dom.split("<th scope=\"col\" data-slug=\"").each_with_index do |chunk, n|
+    next if n == 0 || chunk.split(">", 2)[0].ends_with?("hidden=\"\"")
+    slugs << chunk.split("\"", 2)[0]
+  end
+  slugs
+end
+
+def hidden?(dom : String, id : String) : Bool
+  dom.split("id=\"#{id}\"", 2)[1].split(">", 2)[0].includes?("hidden")
+end
+
+def find_chrome : String
+  if chosen = Program.env("CHROME")
+    return chosen
+  end
+  ["google-chrome", "chromium", "chromium-browser"].each do |name|
+    return name if Process.run(name, ["--version"]).is_a?(ProcessResult)
+  end
+  ""
+end
+
+def check_site(base : String, chrome : String) : Nil
+  ["/", "/about/", "/compare/", "/categories/web/", "/packages/http/", "/style.css", "/app.js", "/packages.json"].each do |path|
+    assert_ok(fetch(base + path).status == 200, "GET #{path}")
+  end
+  assert_ok((fetch(base + "/").header("Content-Type") || "").includes?("text/html"), "HTML content type")
+  missing = fetch(base + "/packages/missing/")
+  assert_ok(missing.status == 404 && missing.body.includes?("Nothing here"), "404 page")
+  assert_ok(fetch(base + "/../src/build.iyi").status == 404, "no escape from the site directory")
+  assert_ok(fetch(base + "/", "POST").status == 405, "POST refused")
+  if chrome.empty?
+    puts "SKIP: browser checks (set CHROME to a Chrome or Chromium binary)"
+    return
+  end
+  assert_ok(visible_cards(browse(chrome, base + "/")).size == 19, "all cards")
+  assert_ok(visible_cards(browse(chrome, base + "/?q=http")) == ["http"], "search")
+  assert_ok(visible_cards(browse(chrome, base + "/?category=web")).size == 5, "category filter")
+  assert_ok(visible_cards(browse(chrome, base + "/categories/web/")).size == 5, "category page")
+  assert_ok(visible_cards(browse(chrome, base + "/categories/web/?category=")).size == 19, "category page cleared")
+  assert_ok(visible_cards(browse(chrome, base + "/?kind=Crystal+compatible")).size == 3, "compatibility filter")
+  empty = browse(chrome, base + "/?category=data&kind=Crystal+compatible")
+  assert_ok(visible_cards(empty).empty? && !hidden?(empty, "empty"), "empty state")
+  attack = browse(chrome, base + "/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
+  assert_ok(visible_cards(attack).empty? && attack.split("<script").size == 2, "search text is not markup")
+  asc = visible_cards(browse(chrome, base + "/?sort=name"))
+  desc = visible_cards(browse(chrome, base + "/?sort=reverse"))
+  assert_ok((asc.index("base64") || 99) < (asc.index("yaml") || -1) && desc == asc.reversed, "sorting")
+  compare = browse(chrome, base + "/compare/?p=http&p=json")
+  assert_ok(visible_columns(compare) == ["http", "json"] && !hidden?(compare, "compare-result"), "comparison")
+  ["/compare/", "/compare/?p=http&p=json&p=csv&p=uri", "/compare/?p=missing"].each do |path|
+    page = browse(chrome, base + path)
+    assert_ok(visible_columns(page).empty? && hidden?(page, "compare-result"), "comparison refused #{path}")
+  end
+end
+
+root = Dir.current
+work = "#{root}/.cache/smoke"
+run("rm", ["-rf", work])
+
+["[[a]]\nk = 1\n", "[[a]]\nk = \"x\"\nk = \"y\"\n", "[[a]]\nk = \"open\n", "[a]\n", "[[a]]\nk = \"x\" junk\n", "[[a]]\nk = '''\nnever closed\n", "[[a]]\nk = \"\\q\"\n"].each_with_index do |bad, n|
+  dir = "#{work}/bad#{n}"
+  Dir.mkdir_p("#{dir}/data")
+  Dir.mkdir_p("#{dir}/public")
+  ["layout.html", "style.css", "app.js"].each { |name| File.write("#{dir}/public/#{name}", File.read("public/#{name}")) }
+  File.write("#{dir}/data/catalog.toml", bad)
+  refused = run("#{root}/bin/build", [] of String, chdir: dir)
+  assert_ok(!refused.success? && (refused.stdout + refused.stderr).includes?("TOML:"), "TOML refuses #{bad.inspect}")
+end
+
+site = "#{work}/site"
+built = run("#{root}/bin/build", [] of String, env: {"OUT" => site})
+assert_ok(built.success?, "build: #{built.stdout}#{built.stderr}")
+
+chrome = find_chrome
+listener = IyiSocket.listen("127.0.0.1", 0)
+base = "http://127.0.0.1:#{listener.local_port}"
+failure = ""
+group do |g|
+  g.spawn do
+    Server.serve(listener) { |request| serve_file(site, request) }
+    0
+  end
+  checked = g.spawn do
+    check_site(base, chrome)
+    0
+  end
+  outcome = checked.value
+  listener.close
+  failure = outcome.message.to_s if outcome.is_a?(Panicked)
+  0
+end
+raise failure unless failure.empty?
+run("rm", ["-rf", work])
+puts "PASS: TOML refusals, static build, HTTP serving and 404s, browser search, filters, sorting and comparison"

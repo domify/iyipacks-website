@@ -1,0 +1,17 @@
+module iyipacks/serve
+
+import std/file
+import std/http::{Server}
+import std/socket::{IyiSocket}
+import static::{serve_file}
+
+# Local preview of the generated site. Production needs only the files.
+root = Program.env("OUT") || "site"
+raise "#{root}/index.html is missing; run make build first" unless File.file?("#{root}/index.html")
+port_text = Program.env("PORT") || "3000"
+port = port_text.to_i?
+raise "PORT must be a number between 1 and 65535" unless port && port > 0 && port <= 65535
+host = Program.env("HOST") || "127.0.0.1"
+listener = IyiSocket.listen(host, port)
+puts "iyipacks preview of #{root}/ → http://#{host}:#{listener.local_port}"
+Server.serve(listener) { |request| serve_file(root, request) }

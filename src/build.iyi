@@ -1,0 +1,17 @@
+module iyipacks/build
+
+import std/dir::{Dir}
+import catalog::{site_files}
+
+# Writes the finished site into OUT (default: site/). Upload that directory to
+# any static web host; it contains only HTML, CSS, JavaScript and JSON.
+output = Program.env("OUT") || "site"
+raise "OUT must name a directory" if output.empty? || output == "/"
+files = site_files
+files.each do |path, content|
+  target = "#{output}/#{path}"
+  slash = target.rindex('/')
+  Dir.mkdir_p(target[0, slash]) if slash
+  File.write(target, content)
+end
+puts "iyipacks → #{files.size} files written to #{output}/"

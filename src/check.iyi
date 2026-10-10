@@ -1,0 +1,50 @@
+module iyipacks/check
+
+import catalog::{site_files}
+import toml::{parse_toml}
+import std/json::{JSON}
+
+def assert_ok(condition : Bool, message : String) : Nil
+  raise "FAIL: #{message}" unless condition
+end
+
+def occurrences(text : String, part : String) : Int32
+  text.split(part).size - 1
+end
+
+parsed = parse_toml("# c\n[[a]]\nk = \"x \\\"q\\\" \\u00e9\\n\" # tail\nl = 'C:\\path'\nm = '''\nline1\nline2'''\n[[a]]\nk = \"↗\"\n")
+assert_ok(parsed["a"].as_a.size == 2, "TOML array of tables")
+assert_ok(parsed["a"][0]["k"].as_s == "x \"q\" é\n", "TOML basic string escapes")
+assert_ok(parsed["a"][0]["l"].as_s == "C:\\path", "TOML literal string")
+assert_ok(parsed["a"][0]["m"].as_s == "line1\nline2", "TOML multiline literal string")
+assert_ok(parsed["a"][1]["k"].as_s == "↗", "TOML Unicode")
+
+files = site_files
+data = JSON.parse(files["packages.json"])
+assert_ok(data["categories"].as_a.size == 5 && data["packages"].as_a.size == 19, "catalog counts")
+assert_ok(data["categories"][0]["icon"].as_s == "↗", "Unicode preserved")
+kemal = data["packages"].as_a.find { |pack| pack["slug"].as_s == "kemal" }
+assert_ok(!kemal.nil?, "Kemal present in catalog")
+if kemal
+  assert_ok(kemal["usage"].as_s == "require \"kemal\"\n# Build with: iyi build --crystal src/server.iyi", "multiline example preserved")
+end
+
+home = files["index.html"]
+assert_ok(home.includes?("Good code starts") && !home.includes?("{{content}}"), "homepage")
+assert_ok(occurrences(home, "<article class=\"package\"") == 19 && !home.includes?("\" hidden><div class=\"package-top"), "homepage shows every card")
+assert_ok(home.includes?("19 packages"), "catalog count")
+assert_ok((home.index("/packages/base64/") || -1) < (home.index("/packages/yaml/") || -1), "cards sorted by name")
+assert_ok(home.includes?("Content-Security-Policy") && home.includes?("script-src 'self'"), "security policy")
+web = files["categories/web/index.html"]
+assert_ok(occurrences(web, "<article class=\"package\"") == 19 && occurrences(web, "\" hidden><div class=\"package-top") == 14, "category page shows 5 cards")
+assert_ok(web.includes?("5 packages") && web.includes?("<option value=\"web\" selected>"), "category page state")
+data["packages"].as_a.each do |pack|
+  detail = files["packages/#{pack["slug"].as_s}/index.html"]? || ""
+  assert_ok(detail.includes?("Get started") && detail.includes?(pack["source"].as_s), "package detail #{pack["slug"].as_s}")
+end
+assert_ok(files["packages/kemal/index.html"].includes?("require &quot;kemal&quot;"), "HTML escaping")
+compare = files["compare/index.html"]
+assert_ok(compare.includes?("<table>") && occurrences(compare, "data-slug=\"http\"") == 7, "comparison table")
+["about/index.html", "404.html", "style.css", "app.js"].each { |path| assert_ok(files.has_key?(path), "file #{path}") }
+assert_ok(files.size == 31, "file count")
+puts "PASS: TOML reader, catalog data, listing and category pages, all 19 details, comparison, escaping and assets"

@@ -1,0 +1,136 @@
+module toml
+
+import std/json::{Any}
+
+# Reads the TOML subset used by data/catalog.toml into JSON values:
+# comments, blank lines, `[[name]]` arrays of tables, and bare keys with
+# basic ("..."), literal ('...') or multiline literal ('''...''') string
+# values. iyi has no native TOML module, and a bound Crystal shard cannot be
+# combined with the native std/http server, so anything outside this subset
+# is refused with its line number instead of being guessed at.
+pub def parse_toml(text : String) : Any
+  root = {} of String => Any
+  current = root
+  lines = text.lchop('﻿').lines
+  i = 0
+  while i < lines.size
+    lineno = i + 1
+    line = lines[i].lstrip
+    i += 1
+    next if line.empty? || line.starts_with?("#")
+
+    if line.starts_with?("[[")
+      close = line.index("]]")
+      raise "TOML: unterminated table header at line #{lineno}" unless close
+      expect_end(line[close + 2, line.size], lineno)
+      name = line[2, close - 2].strip
+      raise "TOML: invalid table name #{name.inspect} at line #{lineno}" unless bare_key?(name)
+      table = {} of String => Any
+      if existing = root[name]?
+        tables = existing.as_a?
+        raise "TOML: #{name} is not an array of tables at line #{lineno}" unless tables
+        tables << Any.new(table)
+      else
+        root[name] = Any.new([Any.new(table)] of Any)
+      end
+      current = table
+      next
+    end
+    raise "TOML: unsupported syntax at line #{lineno}" if line.starts_with?("[")
+
+    eq = line.index('=')
+    raise "TOML: expected key = value at line #{lineno}" unless eq
+    key = line[0, eq].strip
+    raise "TOML: invalid key #{key.inspect} at line #{lineno}" unless bare_key?(key)
+    raise "TOML: duplicate key #{key} at line #{lineno}" if current.has_key?(key)
+    rest = line[eq + 1, line.size].lstrip
+
+    if rest.starts_with?("'''")
+      # A newline right after the opening delimiter is not part of the value.
+      buffer = rest[3, rest.size]
+      start = lineno
+      until close = buffer.index("'''")
+        raise "TOML: unterminated multiline string from line #{start}" if i >= lines.size
+        buffer += "\n" + lines[i]
+        i += 1
+      end
+      expect_end(buffer[close + 3, buffer.size], i)
+      current[key] = Any.new(buffer[0, close].lchop('\n'))
+    elsif rest.starts_with?("\"\"\"")
+      raise "TOML: multiline basic strings are not supported at line #{lineno}"
+    elsif rest.starts_with?("'")
+      close = rest.index('\'', 1)
+      raise "TOML: unterminated literal string at line #{lineno}" unless close
+      expect_end(rest[close + 1, rest.size], lineno)
+      current[key] = Any.new(rest[1, close - 1])
+    elsif rest.starts_with?("\"")
+      current[key] = Any.new(basic_string(rest, lineno))
+    else
+      raise "TOML: only string values are supported at line #{lineno}"
+    end
+  end
+  Any.new(root)
+end
+
+def bare_key?(key : String) : Bool
+  !key.empty? && key.chars.all? { |c| c.ascii_alphanumeric? || c == '_' || c == '-' }
+end
+
+def expect_end(rest : String, lineno : Int32) : Nil
+  rest = rest.strip
+  raise "TOML: unexpected #{rest.inspect} at line #{lineno}" unless rest.empty? || rest.starts_with?("#")
+end
+
+# Joins up to *count* characters from *start*. String indexes count bytes, so
+# a string with multibyte characters is walked as an Array(Char) instead.
+def slice_chars(chars : Array(Char), start : Int32, count : Int32) : String
+  joined = ""
+  k = start
+  while k < chars.size && k < start + count
+    joined += chars[k].to_s
+    k += 1
+  end
+  joined
+end
+
+# Decodes a "..." string starting at the beginning of *rest*.
+def basic_string(rest : String, lineno : Int32) : String
+  chars = rest.chars
+  decoded = ""
+  j = 1
+  while j < chars.size
+    c = chars[j]
+    if c == '"'
+      expect_end(slice_chars(chars, j + 1, chars.size), lineno)
+      return decoded
+    elsif c == '\\'
+      raise "TOML: unterminated escape at line #{lineno}" if j + 1 >= chars.size
+      e = chars[j + 1]
+      j += 2
+      case e
+      when 'n' then decoded += "\n"
+      when 't' then decoded += "\t"
+      when 'r' then decoded += "\r"
+      when 'b' then decoded += "\b"
+      when 'f' then decoded += "\f"
+      when '"' then decoded += "\""
+      when '\\' then decoded += "\\"
+      when 'u', 'U'
+        width = e == 'u' ? 4 : 8
+        raise "TOML: short unicode escape at line #{lineno}" if j + width > chars.size
+        code = slice_chars(chars, j, width).to_i?(16)
+        raise "TOML: invalid unicode escape at line #{lineno}" unless code
+        decoded += code.chr.to_s
+        j += width
+      else
+        raise "TOML: invalid escape \\#{e} at line #{lineno}"
+      end
+      next
+    elsif (c.ord < 0x20 && c != '\t') || c.ord == 0x7f
+      raise "TOML: control character in string at line #{lineno}"
+    end
+    decoded += c.to_s
+    j += 1
+  end
+  raise "TOML: unterminated string at line #{lineno}"
+end
