@@ -4,11 +4,15 @@ import std/json::{JSON, Any}
 import std/html::{HTML}
 import std/text
 import toml::{parse_toml}
+import slang::{Slang}
 
 # Renders the whole site from data/catalog.toml into finished files. Nothing
 # here runs on the web server: `site_files` maps each output path to its
-# contents and build.iyi writes them out. Links are root-relative, so the site
-# is served from the root of its host. Run from the project directory.
+# contents and build.iyi writes them out. The HTML is in Slang templates under
+# src/views/, compiled into this program; local variables of the method that
+# renders a template are visible in it. Links are relative and name each
+# index.html, so the site works from any directory of a host and when its files
+# are opened straight from disk. Run from the project directory.
 
 # Catalog entries contain string-valued fields; validate them while preparing
 # packages.json. data/catalog.toml remains the single source of truth.
@@ -26,10 +30,21 @@ CATEGORIES = CATALOG["categories"].as_a
 CATALOG_JSON = JSON.to_json({"categories" => json_records(CATEGORIES), "packages" => json_records(CATALOG["packages"].as_a)})
 STYLE = File.read("public/style.css")
 SCRIPT = File.read("public/app.js")
-LAYOUT = File.read("public/layout.html")
+CONTENT_SECURITY_POLICY = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
+FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23d1333d'/%3E%3Ctext x='18' y='46' font-size='46' font-family='monospace' fill='%23ffffff'%3Ei%3C/text%3E%3C/svg%3E"
+COMPARE_ROWS = [{"Category", "category"}, {"Compatibility", "kind"}, {"Distribution", "distribution"}, {"Description", "description"}, {"Notes", "note"}, {"Usage", "usage"}]
 
 def esc(value : String) : String
   HTML.escape(value)
+end
+
+# A heading with the red full stop, with no space before it.
+def accent(text : String) : String
+  "#{esc(text)}<span class=\"accent\">.</span>"
+end
+
+def badge_class(kind : String) : String
+  kind == "Native iyi" ? "native" : "crystal"
 end
 
 def category_name(slug : String) : String
@@ -37,66 +52,47 @@ def category_name(slug : String) : String
   "All categories"
 end
 
-def page(title : String, content : String) : String
-  LAYOUT.gsub("{{title}}", esc(title)).gsub("{{content}}", content)
-end
-
-def package_card(pack : Any, visible : Bool) : String
-  slug = pack["slug"].as_s
-  kind = pack["kind"].as_s
-  search = "#{pack["name"].as_s} #{slug} #{pack["description"].as_s}".downcase
-  "<article class=\"package\" data-search=\"#{esc(search)}\" data-category=\"#{esc(pack["category"].as_s)}\" data-kind=\"#{esc(kind)}\"#{visible ? "" : " hidden"}><div class=\"package-top\"><span class=\"package-icon\">#{esc(slug[0, 1])}</span><span class=\"badge #{kind == "Native iyi" ? "native" : "crystal"}\">#{esc(kind)}</span></div><h3><a href=\"/packages/#{slug}/\">#{esc(pack["name"].as_s)} <span>↗</span></a></h3><p>#{esc(pack["description"].as_s)}</p><div class=\"package-bottom\"><a href=\"/categories/#{pack["category"].as_s}/#catalog\">#{esc(category_name(pack["category"].as_s))}</a><label data-js hidden><input type=\"checkbox\" form=\"compare-form\" name=\"p\" value=\"#{slug}\"> Compare</label></div></article>"
+# *root* leads from the page back to the site's top directory: "../../" for
+# packages/http/index.html. 404.html is shown at whatever path was missing,
+# so it alone links from the host's root, "/".
+def page(title : String, content : String, root : String) : String
+  Slang.render("views/layout.slang")
 end
 
 # Every listing page carries all cards so app.js can search, filter and sort
 # them in the browser; a category page hides the others for readers without
 # JavaScript, whose filters are the category links.
-def listing(category : String) : String
+def listing(category : String, root : String) : String
   chosen = PACKAGES.count { |pack| category.empty? || pack["category"].as_s == category }
-  options = "<option value=\"\">All categories</option>"
-  CATEGORIES.each { |c| options += "<option value=\"#{c["slug"].as_s}\" #{category == c["slug"].as_s ? "selected" : ""}>#{esc(c["name"].as_s)}</option>" }
-  sidebar = "<a class=\"category-link #{category.empty? ? "active" : ""}\" href=\"/#catalog\"><span>⊞ &nbsp; All packages</span><span>#{PACKAGES.size}</span></a>"
-  CATEGORIES.each do |c|
-    slug = c["slug"].as_s
-    count = PACKAGES.count { |pack| pack["category"].as_s == slug }
-    sidebar += "<a class=\"category-link #{category == slug ? "active" : ""}\" href=\"/categories/#{slug}/#catalog\"><span>#{esc(c["icon"].as_s)} &nbsp; #{esc(c["name"].as_s)}</span><span>#{count}</span></a>"
-  end
-  cards = PACKAGES.map { |pack| package_card(pack, category.empty? || pack["category"].as_s == category) }.join
-  empty = "<div class=\"empty\" id=\"empty\"#{chosen == 0 ? "" : " hidden"}><h3>No packages found.</h3><p>Try another search or clear your filters.</p><a class=\"button\" href=\"/#catalog\">Clear filters ↗</a></div>"
-  "<section class=\"hero\"><div><div class=\"eyebrow\"><span class=\"dot\"></span> THE IYI PACKAGE DIRECTORY</div><h1>Good code starts<br>with <em>good tools.</em></h1><p>Find your next building block. Explore the iyi standard library<br class=\"desktop\"> and the Crystal ecosystem, all in one place.</p><a class=\"text-link\" href=\"#catalog\">Explore the collection <span>↓</span></a></div><div class=\"hero-art\" aria-hidden=\"true\"><div class=\"art-label\">SMALL PIECES. GOOD TOGETHER.</div><div class=\"cube one\">i</div><div class=\"cube two\">y</div><div class=\"cube three\">i</div><div class=\"art-code\">import good/things::*<br><span>build something iyi.</span></div></div></section><div class=\"stats\"><span><b>#{PACKAGES.size}</b> curated packages</span><span><b>#{CATEGORIES.size}</b> categories</span><span><span class=\"dot\"></span> Generated by iyi</span><span class=\"stats-note\">A small ecosystem. A good beginning.</span></div><section id=\"catalog\" class=\"catalog\"><aside id=\"categories\"><div class=\"eyebrow\">BROWSE BY CATEGORY</div>#{sidebar}<div class=\"aside-note\"><span>↗</span><h3>Made for builders.</h3><p>Standard modules and ecosystem libraries, with clear compatibility notes.</p><a href=\"/about/\">About this directory →</a></div></aside><div class=\"results\"><div class=\"section-title\"><h2 id=\"results-title\">#{category.empty? ? "Discover packages" : esc(category_name(category))}</h2><span id=\"results-count\">#{chosen} packages</span></div><form class=\"filters\" id=\"filters\" action=\"/#catalog\" method=\"get\" data-js hidden><label class=\"search\"><span>⌕</span><input id=\"search\" name=\"q\" placeholder=\"Search packages…\" aria-label=\"Search packages\"><kbd>/</kbd></label><select name=\"category\" aria-label=\"Category\">#{options}</select><select name=\"kind\" aria-label=\"Compatibility\"><option value=\"\">All types</option><option>Native iyi</option><option>Crystal compatible</option></select><select name=\"sort\" aria-label=\"Sort order\"><option value=\"name\">Name A–Z</option><option value=\"reverse\">Name Z–A</option></select><button type=\"submit\">Search →</button></form><div class=\"catalog-note\"><span class=\"dot\"></span> Hand-curated. Compatibility explained. No invented popularity scores.</div><div class=\"package-grid\" id=\"package-grid\">#{cards}</div>#{empty}<form id=\"compare-form\" action=\"/compare/\" method=\"get\" class=\"compare-bar\" data-js hidden><span>Select up to 3 packages to compare.</span><button class=\"button\" type=\"submit\">Compare selected ↗</button></form></div></section>"
+  Slang.render("views/listing.slang")
 end
 
-def detail(pack : Any) : String
-  kind = pack["kind"].as_s
-  "<section class=\"detail\"><a class=\"text-link\" href=\"/#catalog\">← Back to packages</a><div class=\"eyebrow\">#{esc(category_name(pack["category"].as_s))}</div><h1>#{esc(pack["name"].as_s)}<span class=\"accent\">.</span></h1><p class=\"lead\">#{esc(pack["description"].as_s)}</p><span class=\"badge #{kind == "Native iyi" ? "native" : "crystal"}\">#{esc(kind)}</span><div class=\"detail-grid\"><div><h2>Get started</h2><pre><code>#{esc(pack["usage"].as_s)}</code></pre><h2>Compatibility notes</h2><p>#{esc(pack["note"].as_s)}</p><p>#{kind == "Native iyi" ? "Included with iyi. No external dependency installation needed." : "Install this shard with Crystal’s shards tool and build your application with iyi build --crystal. Compatibility must be checked for the version you choose."}</p></div><aside class=\"metadata\"><h3>Package information</h3><dl><dt>Distribution</dt><dd>#{esc(pack["distribution"].as_s)}</dd><dt>License</dt><dd>#{esc(pack["license"].as_s)}</dd><dt>Popularity / release data</dt><dd>Not collected</dd></dl><a class=\"button\" href=\"#{esc(pack["source"].as_s)}\" target=\"_blank\" rel=\"noopener noreferrer\">View source ↗</a></aside></div></section>"
+def detail(pack : Any, root : String) : String
+  Slang.render("views/detail.slang")
 end
 
-# The table holds a column for every package; app.js shows the ones named by
-# the page's `?p=` parameters, between one and three of them.
-def comparison : String
-  heads = PACKAGES.map { |pack| "<th scope=\"col\" data-slug=\"#{pack["slug"].as_s}\" hidden><a href=\"/packages/#{pack["slug"].as_s}/\">#{esc(pack["name"].as_s)} ↗</a></th>" }.join
-  rows = ""
-  [{"Category", "category"}, {"Compatibility", "kind"}, {"Distribution", "distribution"}, {"Description", "description"}, {"Notes", "note"}, {"Usage", "usage"}].each do |entry|
-    cells = PACKAGES.map { |pack| "<td data-slug=\"#{pack["slug"].as_s}\" hidden>#{esc(entry[1] == "category" ? category_name(pack[entry[1]].as_s) : pack[entry[1]].as_s)}</td>" }.join
-    rows += "<tr><th scope=\"row\">#{entry[0]}</th>#{cells}</tr>"
-  end
-  "<section class=\"detail\" id=\"compare-empty\"><h1>Pick a few good tools.</h1><p>Select between 1 and 3 packages from the directory.</p><noscript><p>Comparing packages needs JavaScript.</p></noscript><a class=\"button\" href=\"/#catalog\">Browse packages ↗</a></section><section class=\"detail\" id=\"compare-result\" hidden><a class=\"text-link\" href=\"/#catalog\">← Back to packages</a><h1>Side by side<span class=\"accent\">.</span></h1><p class=\"lead\">Find the right building block for your project.</p><div class=\"table-scroll\"><table><thead><tr><th scope=\"col\">Package</th>#{heads}</tr></thead><tbody>#{rows}</tbody></table></div></section>"
+def comparison(root : String) : String
+  Slang.render("views/compare.slang")
 end
 
-ABOUT = "<section class=\"detail prose\"><a class=\"text-link\" href=\"/\">← Back home</a><h1>A good place to start<span class=\"accent\">.</span></h1><p class=\"lead\">A hand-curated directory for the iyi ecosystem, inspired by the Ruby Toolbox.</p><h2>What is in the directory?</h2><p>Native iyi standard modules and a small selection of Crystal ecosystem libraries. Standard modules ship with iyi. Crystal libraries require the Crystal compatibility mode and their own dependencies.</p><h2>Honest data</h2><p>This is a starter catalog, not a package registry. GitHub stars, downloads, releases and maintenance status have not been collected. A Crystal entry is an ecosystem reference, not a guarantee that every release compiles with iyi.</p><h2>Contribute</h2><p>Add or update entries in data/catalog.toml and rebuild the site. Every entry links to its source.</p><p><a class=\"button\" href=\"https://iyi.dev/\">Explore iyi ↗</a></p></section>"
+def about(root : String) : String
+  Slang.render("views/about.slang")
+end
 
-NOT_FOUND = "<section class=\"detail\"><div class=\"eyebrow\">404</div><h1>Nothing here. Yet.</h1><p>This page or package does not exist.</p><a class=\"button\" href=\"/\">Back to the directory ↗</a></section>"
+def not_found(root : String) : String
+  Slang.render("views/not_found.slang")
+end
 
 pub def site_files : Hash(String, String)
   files = {} of String => String
-  files["index.html"] = page("Good tools for iyi", listing(""))
+  files["index.html"] = page("Good tools for iyi", listing("", ""), "")
   CATEGORIES.each do |c|
-    files["categories/#{c["slug"].as_s}/index.html"] = page(c["name"].as_s, listing(c["slug"].as_s))
+    files["categories/#{c["slug"].as_s}/index.html"] = page(c["name"].as_s, listing(c["slug"].as_s, "../../"), "../../")
   end
-  PACKAGES.each { |pack| files["packages/#{pack["slug"].as_s}/index.html"] = page(pack["name"].as_s, detail(pack)) }
-  files["compare/index.html"] = page("Compare packages", comparison)
-  files["about/index.html"] = page("About", ABOUT)
-  files["404.html"] = page("Page not found", NOT_FOUND)
+  PACKAGES.each { |pack| files["packages/#{pack["slug"].as_s}/index.html"] = page(pack["name"].as_s, detail(pack, "../../"), "../../") }
+  files["compare/index.html"] = page("Compare packages", comparison("../"), "../")
+  files["about/index.html"] = page("About", about("../"), "../")
+  files["404.html"] = page("Page not found", not_found("/"), "/")
   files["packages.json"] = CATALOG_JSON
   files["style.css"] = STYLE
   files["app.js"] = SCRIPT

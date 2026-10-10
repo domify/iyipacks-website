@@ -8,6 +8,26 @@ def assert_ok(condition : Bool, message : String) : Nil
   raise "FAIL: #{message}" unless condition
 end
 
+# Resolves *link* against the directory of the page at *from*, the way a
+# browser does, dropping any query or fragment.
+def resolve(from : String, link : String) : String
+  parts = from.split("/")
+  parts.pop
+  link.split("#", 2)[0].split("?", 2)[0].split("/").each do |part|
+    if part == ".."
+      parts.pop unless parts.empty?
+    elsif part != "."
+      parts << part
+    end
+  end
+  parts.join("/")
+end
+
+# Package cards rendered hidden, for readers without JavaScript.
+def hidden_cards(page : String) : Int32
+  page.split("<article class=\"package\"").count { |chunk| chunk.split(">", 2)[0].ends_with?(" hidden") }
+end
+
 def occurrences(text : String, part : String) : Int32
   text.split(part).size - 1
 end
@@ -31,12 +51,12 @@ end
 
 home = files["index.html"]
 assert_ok(home.includes?("Good code starts") && !home.includes?("{{content}}"), "homepage")
-assert_ok(occurrences(home, "<article class=\"package\"") == 19 && !home.includes?("\" hidden><div class=\"package-top"), "homepage shows every card")
+assert_ok(occurrences(home, "<article class=\"package\"") == 19 && hidden_cards(home) == 0, "homepage shows every card")
 assert_ok(home.includes?("19 packages"), "catalog count")
-assert_ok((home.index("/packages/base64/") || -1) < (home.index("/packages/yaml/") || -1), "cards sorted by name")
-assert_ok(home.includes?("Content-Security-Policy") && home.includes?("script-src 'self'"), "security policy")
+assert_ok((home.index("packages/base64/") || -1) < (home.index("packages/yaml/") || -1), "cards sorted by name")
+assert_ok(home.includes?("Content-Security-Policy") && home.includes?("script-src &#39;self&#39;"), "security policy")
 web = files["categories/web/index.html"]
-assert_ok(occurrences(web, "<article class=\"package\"") == 19 && occurrences(web, "\" hidden><div class=\"package-top") == 14, "category page shows 5 cards")
+assert_ok(occurrences(web, "<article class=\"package\"") == 19 && hidden_cards(web) == 14, "category page shows 5 cards")
 assert_ok(web.includes?("5 packages") && web.includes?("<option value=\"web\" selected>"), "category page state")
 data["packages"].as_a.each do |pack|
   detail = files["packages/#{pack["slug"].as_s}/index.html"]? || ""
@@ -47,4 +67,20 @@ compare = files["compare/index.html"]
 assert_ok(compare.includes?("<table>") && occurrences(compare, "data-slug=\"http\"") == 7, "comparison table")
 ["about/index.html", "404.html", "style.css", "app.js"].each { |path| assert_ok(files.has_key?(path), "file #{path}") }
 assert_ok(files.size == 31, "file count")
-puts "PASS: TOML reader, catalog data, listing and category pages, all 19 details, comparison, escaping and assets"
+# Every internal link, stylesheet, script and form target names a generated
+# file, so the site works from disk and from any directory of a host.
+files.each do |path, content|
+  next unless path.ends_with?(".html")
+  ["href=\"", "src=\"", "action=\""].each do |attribute|
+    content.split(attribute).each_with_index do |chunk, n|
+      link = chunk.split("\"", 2)[0]
+      next if n == 0 || link.starts_with?("#") || link.includes?(":")
+      if path == "404.html"
+        assert_ok(link.starts_with?("/") && files.has_key?(resolve("index.html", link[1, link.size])), "404.html link #{link}")
+      else
+        assert_ok(!link.starts_with?("/") && files.has_key?(resolve(path, link)), "#{path} link #{link}")
+      end
+    end
+  end
+end
+puts "PASS: TOML reader, catalog data, listing and category pages, all 19 details, comparison, escaping, links and assets"

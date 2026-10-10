@@ -1,0 +1,78 @@
+# Slang: Slim-style templates, ported to iyi from the Crystal shard
+# jeromegn/slang 1.7.3 (https://github.com/jeromegn/slang, MIT License,
+# Copyright (c) 2016 Jerome Gravel-Niquet; see src/slang/LICENSE).
+#
+# Like the original, a template becomes code at compile time: `Slang.embed`
+# and `Slang.render` run `slang/process` (src/slang/process.iyi), which parses
+# the template and prints the iyi source that renders it. This module is what
+# that source needs at run time. Local variables of the method that renders a
+# template are visible inside it.
+#
+#     doctype html
+#     html
+#       body
+#         h1.title = title          / escaped output
+#         div == content            / raw output
+#         - items.each do |item|
+#           a href="#{root}#{item}" = item
+#         input type="checkbox" checked=selected
+#
+# Differences from the Crystal original:
+#   * Output and text are escaped with iyi's HTML.escape; an attribute value
+#     is escaped the same way (the original replaced only `"`).
+#   * An attribute whose value is `false` or `nil` is left out and `true`
+#     writes the bare name, through `Slang.attribute` instead of inline code.
+#   * `= expr do` with a nested block is refused: iyi has no `String.build`
+#     block the original wrapped it in.
+module slang
+
+import std/html::{HTML}
+
+pub struct Slang
+  # Collects what a template writes, for `render`.
+  pub class Buffer
+    @parts : Array(String)
+
+    def initialize
+      @parts = [] of String
+    end
+
+    def <<(text : String) : Buffer
+      @parts << text
+      self
+    end
+
+    def to_s : String
+      @parts.join("")
+    end
+  end
+
+  def self.escape(value) : String
+    HTML.escape(value.to_s)
+  end
+
+  def self.attribute(buffer : Buffer, name : String, value : Bool) : Nil
+    buffer << " " << name if value
+  end
+
+  def self.attribute(buffer : Buffer, name : String, value : Nil) : Nil
+  end
+
+  def self.attribute(buffer : Buffer, name : String, value) : Nil
+    buffer << " " << name << "=\"" << HTML.escape(value.to_s) << "\""
+  end
+
+  # Splices the template at *filename* here; its code writes to *buffer*.
+  macro embed(filename, buffer)
+    {{ run("./slang/process", @caller.first.filename || "", filename, buffer.id.stringify) }}
+  end
+
+  # The template at *filename*, rendered to a `String`.
+  macro render(filename)
+    begin
+      %buf = ::Slang::Slang::Buffer.new
+      ::Slang::Slang.embed({{filename}}, %buf)
+      %buf.to_s
+    end
+  end
+end

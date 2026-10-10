@@ -18,10 +18,11 @@ make serve   # optional local preview at http://127.0.0.1:3000
 ```
 
 `OUT=dist make build` writes somewhere else. `PORT` and `HOST` change the
-preview address. For production, upload the contents of `site/` to any static
-web host (nginx, Caddy, GitHub Pages, …) serving it from the root of its
-domain; links are root-relative. Configure the host to answer missing pages
-with `404.html`.
+preview address. `site/index.html` can also be opened straight from disk: links
+are relative and name each `index.html`. For production, upload the contents of
+`site/` to any static web host (nginx, Caddy, GitHub Pages, …), in any directory.
+Configure the host to answer missing pages with `404.html`; it is the only page
+whose links start from the host's root.
 
 ## Features
 
@@ -38,8 +39,32 @@ with `404.html`.
 
 ## Updating the catalog
 
-Edit `data/catalog.toml` and run `make build`. Recompiling is only needed when
-the iyi sources change; changes to data or to `public/` need only `./bin/build`.
+Edit `data/catalog.toml` and run `make build`. Changes to data, `style.css` or
+`app.js` need only `./bin/build`; templates are compiled into the generator, so
+`make build` recompiles it.
+
+## Templates
+
+The HTML is written in [Slang](https://github.com/jeromegn/slang), the Slim
+template language of the Crystal ecosystem, under `src/views/`:
+
+```slim
+section.detail
+  h1 == accent(pack["name"].as_s)
+  p.lead = pack["description"].as_s
+  - if kind == "Native iyi"
+    p Included with iyi.
+```
+
+`= expr` writes escaped output, `== expr` raw HTML, `- code` runs iyi code, and
+`| text` is text. Local variables of the method that renders a template are
+visible in it. Slang 1.7.3 is ported to native iyi in `src/slang.iyi` (run time)
+and `src/slang/process.iyi` (compile time: lexer, parser and code generation,
+run by the `Slang.render` macro the way iyi's own `Eiy` runs), under its MIT
+license in `src/slang/LICENSE`. Differences from the Crystal original:
+attribute values are HTML-escaped (not only `"`), and `= expr do` with a nested
+block is not supported. As in the original, an attribute value ends at the
+first space, so compute longer expressions in a `- name = …` line first.
 
 iyi has no TOML module, so `src/toml.iyi` reads the subset the catalog uses:
 comments, `[[categories]]` / `[[packages]]` arrays of tables, and bare keys with
@@ -72,11 +97,13 @@ use another binary. Without a browser, it skips those checks and says so.
 ## Project layout
 
 - `src/build.iyi`: writes the generated files.
-- `src/catalog.iyi`: renders every page from the catalog.
+- `src/catalog.iyi`: page data and helpers; renders the templates.
+- `src/views/`: Slang templates for the layout and every page.
+- `src/slang.iyi`, `src/slang/`: the Slang template language, ported to iyi.
 - `src/toml.iyi`: the TOML subset reader.
 - `src/serve.iyi`, `src/static.iyi`: the local preview server.
 - `src/check.iyi`, `src/smoke.iyi`: tests.
-- `public/`: page template, CSS, and JavaScript.
+- `public/`: CSS and JavaScript.
 - `data/catalog.toml`: categories and package entries.
 
 ## Design and verification limitations

@@ -40,7 +40,8 @@ def visible_cards(dom : String) : Array(String)
   slugs = [] of String
   dom.split("<article class=\"package\"").each_with_index do |chunk, n|
     next if n == 0 || chunk.split(">", 2)[0].ends_with?("hidden=\"\"")
-    slugs << chunk.split("href=\"/packages/", 2)[1].split("/", 2)[0]
+    link = chunk.split("<h3>", 2)[1].split("href=\"", 2)[1].split("\"", 2)[0]
+    slugs << link.split("packages/")[-1].split("/", 2)[0]
   end
   slugs
 end
@@ -68,7 +69,7 @@ def find_chrome : String
   ""
 end
 
-def check_site(base : String, chrome : String) : Nil
+def check_site(base : String, chrome : String, site : String) : Nil
   ["/", "/about/", "/compare/", "/categories/web/", "/packages/http/", "/style.css", "/app.js", "/packages.json"].each do |path|
     assert_ok(fetch(base + path).status == 200, "GET #{path}")
   end
@@ -94,6 +95,10 @@ def check_site(base : String, chrome : String) : Nil
   asc = visible_cards(browse(chrome, base + "/?sort=name"))
   desc = visible_cards(browse(chrome, base + "/?sort=reverse"))
   assert_ok((asc.index("base64") || 99) < (asc.index("yaml") || -1) && desc == asc.reversed, "sorting")
+  # Opened straight from disk: relative links, the stylesheet and app.js load.
+  disk = browse(chrome, "file://#{site}/categories/web/index.html?q=unix")
+  assert_ok(visible_cards(disk) == ["socket"] && disk.includes?("href=\"../../style.css\""), "site opened from disk")
+  assert_ok(File.read("#{site}/index.html").includes?("href=\"style.css\""), "relative stylesheet")
   compare = browse(chrome, base + "/compare/?p=http&p=json")
   assert_ok(visible_columns(compare) == ["http", "json"] && !hidden?(compare, "compare-result"), "comparison")
   ["/compare/", "/compare/?p=http&p=json&p=csv&p=uri", "/compare/?p=missing"].each do |path|
@@ -110,7 +115,7 @@ run("rm", ["-rf", work])
   dir = "#{work}/bad#{n}"
   Dir.mkdir_p("#{dir}/data")
   Dir.mkdir_p("#{dir}/public")
-  ["layout.html", "style.css", "app.js"].each { |name| File.write("#{dir}/public/#{name}", File.read("public/#{name}")) }
+  ["style.css", "app.js"].each { |name| File.write("#{dir}/public/#{name}", File.read("public/#{name}")) }
   File.write("#{dir}/data/catalog.toml", bad)
   refused = run("#{root}/bin/build", [] of String, chdir: dir)
   assert_ok(!refused.success? && (refused.stdout + refused.stderr).includes?("TOML:"), "TOML refuses #{bad.inspect}")
@@ -130,7 +135,7 @@ group do |g|
     0
   end
   checked = g.spawn do
-    check_site(base, chrome)
+    check_site(base, chrome, site)
     0
   end
   outcome = checked.value

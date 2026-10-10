@@ -1,0 +1,668 @@
+# The program `Slang.embed` runs at compile time: `slang/process CALLER
+# TEMPLATE BUFFER` reads the template named beside CALLER (or by an absolute
+# path) and prints the iyi source that renders it into BUFFER. The original
+# shard's src/slang/process.cr does the same for Crystal.
+#
+# The lexer and the node tree are the original's, kept in the same order;
+# templates fail here with their line, and the compiler reports it at the
+# macro.
+module slang_process
+
+import std/text
+
+class Token
+  property type : String
+  property line_number : Int32
+  property column_number : Int32
+  property name : String
+  property id : String?
+  property value : String?
+  property escaped : Bool
+  property inline : Bool
+  property visible : Bool
+  property conditional : String
+  getter classes : Array(String)
+  getter attributes : Hash(String, String)
+
+  def initialize
+    @type = "EOF"
+    @line_number = 0
+    @column_number = 0
+    @name = "div"
+    @id = nil
+    @value = nil
+    @escaped = true
+    @inline = false
+    @visible = true
+    @conditional = ""
+    @classes = [] of String
+    @attributes = {} of String => String
+  end
+
+  def add_attribute(name : String, value : String, interpolate : Bool) : Nil
+    if name == "class"
+      value = "\#{#{value}}" if interpolate
+      @classes << value unless @classes.includes?(value)
+    else
+      @attributes[name] = value
+    end
+  end
+end
+
+class Lexer
+  RAWSTUFF = {"javascript:" => "script", "css:" => "style"}
+  ATTR_OPEN_CLOSE_MAP = {'{' => '}', '[' => ']', '(' => ')', ' ' => ' '}
+  STRING_OPEN_CLOSE_CHARS_MAP = {'(' => ')', '{' => '}', '[' => ']', '<' => '>'}
+
+  getter token : Token
+  @chars : Array(Char)
+
+  def initialize(string : String)
+    @chars = string.chars
+    @chars << '\0'
+    @pos = 0
+    @token = Token.new
+    @line_number = 1
+    @column_number = 1
+    @last_token = @token
+    @raw_text_column = 0
+  end
+
+  def next_token : Token
+    skip_whitespace
+    @token = Token.new
+    @token.line_number = @line_number
+    @token.column_number = @column_number
+
+    if @raw_text_column > 0 && @column_number < @raw_text_column
+      @raw_text_column = 0
+    end
+
+    inline = @raw_text_column > 0 || (@last_token.type == "ELEMENT" && @last_token.line_number == @line_number)
+
+    c = current_char
+    if c == '\0'
+      @token.type = "EOF"
+    elsif c == '\r'
+      raise "slang expected '\\n' after '\\r'" unless next_char == '\n'
+      consume_newline
+    elsif c == '\n'
+      consume_newline
+    elsif c == '.' || c == '#' || c.ascii_letter?
+      inline ? consume_text : consume_element
+    elsif c == '-'
+      inline ? consume_text : consume_control
+    elsif c == ':'
+      inline = false # don't consider this "inline" for output
+      consume_inline_element
+    elsif c == '='
+      consume_output
+    elsif c == '|' || c == '\''
+      consume_text
+    elsif c == '<'
+      consume_html
+      @token.escaped = true if inline
+    elsif c == '/'
+      consume_comment
+    elsif inline
+      consume_text
+    else
+      raise "slang: unexpected char '#{c}' at line #{@line_number}, column #{@column_number}"
+    end
+
+    @token.inline = inline unless @raw_text_column > 0
+    @last_token = @token
+    @token
+  end
+
+  private def consume_element : Nil
+    @token.type = "ELEMENT"
+    loop do
+      c = current_char
+      if c.ascii_letter?
+        consume_element_name
+      elsif c == '.'
+        next_char # skip the '.' at the beginning
+        @token.add_attribute("class", consume_html_valid_name, false)
+      elsif c == '#'
+        next_char # skip the '#' at the beginning
+        @token.id = consume_html_valid_name
+      elsif c == ' ' || c == '[' || c == '(' || c == '{'
+        close_char = ATTR_OPEN_CLOSE_MAP[c]
+        next_char
+        consume_element_attributes(c, close_char)
+        break
+      else
+        break
+      end
+    end
+  end
+
+  private def consume_inline_element : Nil
+    next_char # skip ':'
+    skip_whitespace
+    consume_element
+  end
+
+  private def consume_element_attributes(open_char : Char, close_char : Char) : Nil
+    current_attr_name = ""
+    loop do
+      c = current_char
+      if c.ascii_alphanumeric?
+        break unless current_attr_name.empty?
+        current_attr_name = consume_html_valid_name
+      elsif c == '='
+        break if current_attr_name.empty?
+        @token.add_attribute(current_attr_name, consume_value(open_char, close_char), true)
+        current_attr_name = ""
+      elsif c == ' ' || c == close_char
+        break unless current_attr_name.empty?
+        next_char
+      else
+        break
+      end
+    end
+    go_back(current_attr_name.chars.size)
+  end
+
+  private def consume_element_name : Nil
+    @token.name = check_raw_text_header(consume_html_valid_name)
+    if @token.name == "doctype"
+      @token.type = "DOCTYPE"
+      next_char if current_char == ' '
+      @token.value = consume_line(true)
+    end
+  end
+
+  private def consume_html_valid_name : String
+    name = ""
+    loop do
+      c = current_char
+      if c == ':'
+        break if ATTR_OPEN_CLOSE_MAP.has_key?(peek_next_char)
+      elsif !(c.ascii_alphanumeric? || c == '-' || c == '_')
+        break
+      end
+      name += c.to_s
+      next_char
+    end
+    name
+  end
+
+  private def check_raw_text_header(name : String) : String
+    if raw = RAWSTUFF[name]?
+      @raw_text_column = (@column_number - name.chars.size) + 2
+      raw
+    else
+      name
+    end
+  end
+
+  private def consume_comment : Nil
+    @token.type = "COMMENT"
+    next_char
+    if current_char == '!'
+      @token.visible = true
+      next_char
+    elsif current_char == '['
+      @token.visible = true
+      next_char
+      conditional = ""
+      loop do
+        c = current_char
+        if c == ']'
+          next_char
+          break
+        elsif c == '\0' || c == '\n'
+          break
+        elsif c == '\r'
+          raise "slang expected '\\n' after '\\r'" unless next_char == '\n'
+        else
+          conditional += c.to_s
+          next_char
+        end
+      end
+      @token.conditional = conditional
+    else
+      @token.visible = false
+    end
+    skip_whitespace
+    @token.value = consume_line(true) if @token.conditional.empty?
+  end
+
+  private def consume_control : Nil
+    @token.type = "CONTROL"
+    next_char
+    next_char if current_char == ' '
+    @token.value = consume_line(false)
+  end
+
+  private def consume_output : Nil
+    @token.type = "OUTPUT"
+    append_whitespace = false
+    prepend_whitespace = false
+    next_char
+    if current_char == '='
+      @token.escaped = false
+      next_char
+    end
+    if current_char == '<'
+      prepend_whitespace = true
+      next_char
+    end
+    if current_char == '>'
+      append_whitespace = true
+      next_char
+    end
+    skip_whitespace
+    value = consume_line(false).strip
+    value = " #{value}" if prepend_whitespace
+    value = "#{value} " if append_whitespace
+    @token.value = value
+  end
+
+  private def consume_text : Nil
+    @token.type = "TEXT"
+    append_whitespace = current_char == '\''
+    next_char if current_char == '|' || current_char == '\''
+    skip_whitespace
+    @token.value = "\"#{consume_string('"', '"', true, false).strip}#{append_whitespace ? " " : ""}\""
+  end
+
+  private def consume_string_interpolation : String
+    maybe_string = false
+    text = ""
+    loop do
+      c = current_char
+      maybe_string = true if c == '%'
+      if maybe_string && STRING_OPEN_CLOSE_CHARS_MAP.has_key?(c)
+        text += c.to_s
+        next_char
+        text += consume_string(c, STRING_OPEN_CLOSE_CHARS_MAP[c], false, true)
+        next
+      end
+      if c == '"' || c == '\''
+        text += c.to_s
+        next_char
+        text += consume_string(c, c, false, true)
+        next
+      end
+      if c == '}'
+        text += c.to_s
+        next_char
+        break
+      end
+      break if c == '\n' || c == '\0'
+      text += c.to_s
+      next_char
+    end
+    text
+  end
+
+  private def consume_string(open_char : Char, close_char : Char, escape_double_quotes : Bool, crystal : Bool) : String
+    level = 0
+    escaped = false
+    maybe_string_interpolation = false
+    text = ""
+    loop do
+      if escape_double_quotes
+        if current_char == '"'
+          text += "\\\""
+          next_char
+          next
+        end
+      else
+        if (close_char == '"' || close_char == '\'') && current_char == close_char && !escaped
+          text += current_char.to_s
+          next_char
+          break
+        end
+        level += 1 if current_char == open_char && !escaped
+        if current_char == close_char && !escaped
+          if level == 0
+            text += current_char.to_s
+            next_char
+            break
+          end
+          level -= 1
+        end
+      end
+
+      if maybe_string_interpolation
+        maybe_string_interpolation = false
+        if current_char == '{'
+          text += consume_string_interpolation
+          next
+        end
+      end
+      maybe_string_interpolation = true if current_char == '#' && !escaped
+
+      if escaped
+        escaped = false
+        text += "\\" unless crystal
+      elsif current_char == '\\'
+        escaped = true
+      end
+
+      break if current_char == '\n' || current_char == '\0'
+      text += current_char.to_s
+      next_char
+    end
+    text
+  end
+
+  private def consume_html : Nil
+    @token.type = "HTML"
+    @token.escaped = false
+    @token.value = "\"#{consume_line(true)}\""
+  end
+
+  private def consume_line(escape_double_quotes : Bool) : String
+    line = ""
+    loop do
+      c = current_char
+      break if c == '\n' || c == '\0'
+      line += "\\" if escape_double_quotes && (c == '"' || c == '\\')
+      line += c.to_s
+      next_char
+    end
+    line
+  end
+
+  private def consume_value(open_char : Char, close_char : Char) : String
+    value = ""
+    open_count = 0
+    loop do
+      c = current_char
+      if c == '='
+        next_char
+        if current_char == '"'
+          value += current_char.to_s
+          next_char
+          value += consume_string('"', '"', false, false)
+          break
+        end
+      elsif c == ' '
+        break if open_count == 0
+        value += c.to_s
+        next_char
+      elsif c == open_char
+        open_count += 1
+        value += c.to_s
+        next_char
+      elsif c == close_char
+        break if open_count == 0
+        open_count -= 1
+        value += c.to_s
+        next_char
+      elsif c == '\n' || c == '\0'
+        break
+      else
+        value += c.to_s
+        next_char
+      end
+    end
+    value
+  end
+
+  private def consume_newline : Nil
+    @line_number += 1
+    @column_number = 0
+    loop do
+      c = next_char
+      if c == '\r'
+        raise "slang expected '\\n' after '\\r'" unless next_char == '\n'
+      elsif c != '\n'
+        break
+      end
+      @line_number += 1
+      @column_number = 0
+    end
+    @token.line_number = @line_number
+    @token.column_number = @column_number
+    @token.type = "NEWLINE"
+  end
+
+  private def go_back(count : Int32) : Nil
+    @column_number -= count
+    @pos -= count
+  end
+
+  private def next_char : Char
+    @column_number += 1
+    @pos += 1 if @pos < @chars.size - 1
+    current_char
+  end
+
+  private def peek_next_char : Char
+    @pos + 1 < @chars.size ? @chars[@pos + 1] : '\0'
+  end
+
+  private def current_char : Char
+    @chars[@pos]
+  end
+
+  private def skip_whitespace : Nil
+    while current_char == ' ' || current_char == '\t'
+      next_char
+    end
+  end
+end
+
+# The original's Document, Element, Text, Control, Comment and Doctype
+# classes, as one class told apart by `kind`.
+class Node
+  SELF_CLOSING_TAGS = ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "menuitem", "meta", "param", "source", "track", "wbr"]
+  RAW_TEXT_TAGS = ["script", "style"]
+
+  getter kind : String
+  getter token : Token
+  getter nodes : Array(Node)
+  getter branches : Array(Node)
+  @parent : Node?
+
+  def initialize(@kind : String, @parent : Node?, @token : Token)
+    @nodes = [] of Node
+    @branches = [] of Node
+  end
+
+  def parent : Node
+    @parent || self
+  end
+
+  def document? : Bool
+    @kind == "document"
+  end
+
+  def column_number : Int32
+    @token.column_number
+  end
+
+  def value : String
+    @token.value || ""
+  end
+
+  def inline : Bool
+    @token.inline
+  end
+
+  def children? : Bool
+    !@nodes.empty?
+  end
+
+  def allow_children_to_escape? : Bool
+    if @kind == "element"
+      !RAW_TEXT_TAGS.includes?(@token.name)
+    elsif @kind == "text"
+      parent.allow_children_to_escape?
+    else
+      true
+    end
+  end
+
+  def indentation : String
+    count = 0
+    current = parent
+    until current.document?
+      count += 1 unless current.kind == "control"
+      current = current.parent
+    end
+    "  " * count
+  end
+
+  def indent? : Bool
+    !@token.inline && !indentation.empty?
+  end
+
+  # Control nodes: which branches (`else`, `when`, ...) belong to them.
+  def starts?(word : String) : Bool
+    value == word || value.starts_with?("#{word} ")
+  end
+
+  def branch? : Bool
+    value.starts_with?("else") || starts?("elsif") || value.starts_with?("rescue") || starts?("when") || value.starts_with?("ensure")
+  end
+
+  def allow_branch?(branch : Node) : Bool
+    return false unless branch.kind == "control"
+    if starts?("if")
+      branch.value.starts_with?("else") || branch.starts?("elsif")
+    elsif value.starts_with?("begin")
+      branch.value.starts_with?("rescue") || branch.value.starts_with?("ensure") || branch.value.starts_with?("else")
+    elsif starts?("case")
+      branch.starts?("when") || branch.value.starts_with?("else")
+    else
+      false
+    end
+  end
+
+  def to_s(code : Array(String), buffer : String) : Nil
+    if @kind == "document"
+      @nodes.each { |node| node.to_s(code, buffer) }
+    elsif @kind == "doctype"
+      code << "#{buffer} << \"<!DOCTYPE #{value}>\""
+    elsif @kind == "element"
+      element(code, buffer)
+    elsif @kind == "control"
+      code << value
+      @nodes.each { |node| node.to_s(code, buffer) }
+      @branches.each { |branch| branch.to_s(code, buffer) }
+      code << "end" if (!branch? && children?) || !@branches.empty?
+    elsif @kind == "comment"
+      comment(code, buffer)
+    else
+      text(code, buffer)
+    end
+  end
+
+  private def element(code : Array(String), buffer : String) : Nil
+    name = @token.name
+    code << "#{buffer} << \"\\n\"" unless code.empty?
+    code << "#{buffer} << \"#{indentation}\"" if indent?
+    code << "#{buffer} << \"<#{name}\""
+    if id = @token.id
+      code << "#{buffer} << \" id=\\\"#{id}\\\"\""
+    end
+    unless @token.classes.empty?
+      code << "#{buffer} << \" class=\\\"\" << ::Slang::Slang.escape(\"#{@token.classes.join(" ")}\") << \"\\\"\""
+    end
+    @token.attributes.each do |attribute, expression|
+      code << "::Slang::Slang.attribute(#{buffer}, \"#{attribute}\", (#{expression}))"
+    end
+    code << "#{buffer} << \">\""
+    @nodes.each { |node| node.to_s(code, buffer) }
+    unless SELF_CLOSING_TAGS.includes?(name)
+      if children? && !@nodes.all? { |node| node.inline }
+        code << "#{buffer} << \"\\n\""
+        code << "#{buffer} << \"#{indentation}\"" if indent?
+      end
+      code << "#{buffer} << \"</#{name}>\""
+    end
+  end
+
+  private def text(code : Array(String), buffer : String) : Nil
+    raise "slang: `= #{value}` with a nested block is not supported (line #{@token.line_number})" if @token.type == "OUTPUT" && children?
+    code << "#{buffer} << \"\\n\"" unless code.empty? || inline
+    code << "#{buffer} << \"#{indentation}\"" if indent?
+    if @token.escaped && parent.allow_children_to_escape?
+      code << "#{buffer} << ::Slang::Slang.escape((#{value}))"
+    else
+      code << "#{buffer} << (#{value}).to_s"
+    end
+    @nodes.each { |node| node.to_s(code, buffer) }
+  end
+
+  private def comment(code : Array(String), buffer : String) : Nil
+    return unless @token.visible
+    conditional = @token.conditional
+    code << "#{buffer} << \"\\n\"" unless code.empty?
+    code << "#{buffer} << \"#{indentation}\"" if indent?
+    code << "#{buffer} << \"<!--\""
+    code << "#{buffer} << \"[#{conditional}]>\"" unless conditional.empty?
+    code << "#{buffer} << \"#{value}\"" if @token.value
+    if children?
+      @nodes.each { |node| node.to_s(code, buffer) }
+      code << "#{buffer} << \"\\n#{indentation}\""
+    end
+    code << "#{buffer} << \"<![endif]\"" unless conditional.empty?
+    code << "#{buffer} << \"-->\""
+  end
+end
+
+# Builds the node tree the way the original Parser does: a node's parent is
+# the nearest earlier node in a column to its left, and `else`/`when`-like
+# control lines join the `if`/`case` in their own column.
+def process_string(text : String, buffer : String) : String
+  lexer = Lexer.new(text)
+  document = Node.new("document", nil, Token.new)
+  document.token.column_number = 1
+  current = document
+  controls = {} of Int32 => Node
+  token = lexer.next_token
+  until token.type == "EOF"
+    if token.type == "NEWLINE"
+      token = lexer.next_token
+      next
+    end
+    if token.type == "DOCTYPE"
+      document.nodes << Node.new("doctype", document, token)
+      token = lexer.next_token
+      next
+    end
+    parent = current
+    until parent.document?
+      break if parent.column_number < token.column_number
+      parent = parent.parent
+    end
+    kind = token.type == "ELEMENT" ? "element" : token.type == "CONTROL" ? "control" : token.type == "COMMENT" ? "comment" : "text"
+    node = Node.new(kind, parent, token)
+    if kind == "control" && (last = controls[node.column_number]?) && last.allow_branch?(node)
+      last.branches << node
+    else
+      controls[node.column_number] = node if kind == "control"
+      parent.nodes << node
+    end
+    current = node
+    token = lexer.next_token
+  end
+  code = [] of String
+  document.to_s(code, buffer)
+  code.join("\n") + "\n"
+end
+
+def process_file(filename : String, buffer : String) : String
+  process_string(File.read(filename), buffer)
+end
+
+# Where `embed` reads *template* from when it is written in *caller*: the
+# template itself when absolute, otherwise beside the caller.
+def locate(template : String, caller : String) : String
+  return template if template.starts_with?("/") || caller.empty?
+  slash = caller.rindex('/')
+  slash ? caller[0, slash + 1] + template : template
+end
+
+args = Program.args
+raise "usage: slang/process CALLER TEMPLATE BUFFER, not #{args.size} arguments" unless args.size == 3
+
+print process_file(locate(args[1], args[0]), args[2])
