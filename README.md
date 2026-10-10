@@ -27,15 +27,14 @@ whose links start from the host's root.
 
 ## Features
 
-- The 16 iyi standard library modules and every iyi module found on GitHub, with
+- 43 iyi standard library modules and every iyi module found on GitHub, with
   its stars, forks, contributors, latest version tag, last push and how many listed
   modules require it. Crystal shards are not listed.
 - 6 categories with their own pre-rendered pages, so browsing works without JavaScript.
-- Search, category filtering and sorting by name, stars, use or last update run
-  in the browser (`public/app.js`); the state is kept in the URL, e.g. `/?q=http`.
+- Packages from GitHub come first and the standard library after them, each by
+  name. Search, category filtering and sorting by name, stars, use or last update
+  run in the browser (`public/app.js`); the state is kept in the URL, e.g. `/?q=http`.
 - Package pages with install commands, source links and the GitHub numbers.
-- Side-by-side comparison of up to three packages at `/compare/?p=http&p=json`
-  (needs JavaScript).
 - Responsive light and dark themes matching iyi.dev, visible keyboard focus, and a `/` search shortcut.
 - `packages.json` holds the catalog as JSON.
 - HTML escaping at generation time and a Content Security Policy in every page.
@@ -120,7 +119,7 @@ make test-smoke  # iyi end-to-end test: build, serve over HTTP, drive headless C
 
 `make test-smoke` is written in iyi (`src/smoke.iyi`). It checks that invalid TOML
 stops the build, serves a fresh build with the preview server's handler, and
-loads pages in headless Chrome to test search, filters, sorting and comparison.
+loads pages in headless Chrome to test search, filters and sorting.
 It looks for `google-chrome`, `chromium` or `chromium-browser`; set `CHROME` to
 use another binary. Without a browser, it skips those checks and says so.
 
@@ -153,3 +152,7 @@ were inaccessible from the development environment.
 
 The site was built with iyi 0.16.2; `make test` and `make test-smoke` passed,
 the latter with Google Chrome in headless mode.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

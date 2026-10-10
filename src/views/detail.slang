@@ -53,3 +53,7 @@ section.detail
           dt Created
           dd= ago(field(pack, "created"), NOW)
       a.button href=pack["source"] target="_blank" rel="noopener noreferrer" View source ↗
+      - unless std?(pack)
+        p.care
+          ' Published by its author, not reviewed by iyipacks. Check the source before you use it.
+          a href=REPORT_URL target="_blank" rel="noopener noreferrer" Report a problem ↗

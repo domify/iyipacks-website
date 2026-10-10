@@ -4,26 +4,41 @@ section.hero
       span.dot
       | THE IYI PACKAGE DIRECTORY
     h1
-      | Good code starts
+      | Find an iyi package.
       br
-      ' with
-      em good tools.
+      ' Or write
+      em the next one.
     p
-      ' Find your next building block. Explore the iyi standard library
+      ' The iyi standard library and every iyi module on GitHub, in one place.
       br.desktop
-      | and every iyi module on GitHub, all in one place.
-    a.text-link href="#catalog"
-      | Explore the collection
-      span ↓
-  .hero-art aria-hidden="true"
-    .art-label SMALL PIECES. GOOD TOGETHER.
-    .cube.one i
-    .cube.two y
-    .cube.three i
-    .art-code
-      | import good/things::*
-      br
-      span build something iyi.
+      | Crystal shards are supported too, with iyi build --crystal.
+    .hero-links
+      a.text-link href="#catalog"
+        | Explore the collection
+        span ↓
+      a.text-link href="https://shardbox.org/" target="_blank" rel="noopener noreferrer"
+        | Find Crystal shards on Shardbox
+        span ↗
+  / How a package arrives: the command, code that uses it, and what it prints. Real text, not a picture.
+  .hero-art
+    .art-label EXAMPLE: HOW TO START USING A PACKAGE.
+    .art-term
+      .art-line
+        span.art-prompt> >
+        | iyi get github.com/domify/toml
+      .art-line.art-out
+        span.art-ok> added
+        | github.com/domify/toml v0.1.0
+    .art-file
+      .art-name your-app.iyi
+      .art-line.art-add import github.com/domify/toml::{TOML}
+      .art-line.art-add toml = TOML.parse(%(status = "It works!"))
+      .art-line.art-add puts toml["status"]
+    .art-term
+      .art-line
+        span.art-prompt> >
+        | iyi run your-app.iyi
+      .art-line.art-out It works!
 
 .stats
   span
@@ -73,6 +88,7 @@ section#catalog.catalog
           - selected = category == c["slug"].as_s
           option value=c["slug"].as_s selected=selected = c["name"].as_s
       select name="sort" aria-label="Sort order"
+        option value="packages" Packages first
         option value="name" Name A–Z
         option value="reverse" Name Z–A
         option value="stars" Most stars
@@ -90,7 +106,7 @@ section#catalog.catalog
         - pack_category = pack["category"]
         - search = "#{pack["name"]} #{slug} #{pack["description"]} #{field(pack, "topics")}".downcase
         - visible = category.empty? || pack_category == category
-        article.package data-search=search data-category=pack_category data-stars=field(pack, "stars") data-used=field(pack, "dependents") data-updated=field(pack, "pushed") hidden=!visible
+        article.package data-search=search data-name=pack["name"].downcase data-category=pack_category data-stars=field(pack, "stars") data-used=field(pack, "dependents") data-updated=field(pack, "pushed") hidden=!visible
           .package-top
             span.package-icon= slug[0, 1]
             span.badge class=badge_class(pack) = badge(pack)
@@ -102,16 +118,9 @@ section#catalog.catalog
           p.package-stats= summary(pack)
           .package-bottom
             a href="#{root}categories/#{pack_category}/index.html#catalog"= category_name(pack_category)
-            label data-js=true hidden=true
-              input> type="checkbox" form="compare-form" name="p" value=slug
-              | Compare
 
     - found = chosen != 0
     .empty#empty hidden=found
       h3 No packages found.
       p Try another search or clear your filters.
       a.button href="#{root}index.html#catalog" Clear filters ↗
-
-    form.compare-bar#compare-form action="#{root}compare/index.html" method="get" data-js=true hidden=true
-      span Select up to 3 packages to compare.
-      button.button type="submit" Compare selected ↗

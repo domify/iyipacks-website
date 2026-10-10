@@ -3,7 +3,7 @@ html lang="en"
   head
     meta charset="utf-8"
     meta name="viewport" content="width=device-width, initial-scale=1"
-    meta name="description" content="Discover native iyi modules and Crystal ecosystem libraries. Browse, search and compare your next building blocks."
+    meta name="description" content="The iyi standard library and every iyi module on GitHub: browse and search them. Crystal shards are supported too; find them on Shardbox."
     meta name="color-scheme" content="light dark"
     meta http-equiv="Content-Security-Policy" content=CONTENT_SECURITY_POLICY
     title= "#{title} · iyipacks"
@@ -15,8 +15,8 @@ html lang="en"
     .shell
       header
         a.logo href="#{root}index.html" aria-label="iyipacks home"
-          span.logo-mark!= "iyi<span>▰</span>"
-          span.logo-name!= accent("packs")
+          span.logo-mark!= LOGO
+          span.logo-name!= "<b>iyi</b>packs<span class=\"accent\">.</span>"
         nav aria-label="Main navigation"
           a href="#{root}index.html#catalog" Packages
           a href="#{root}index.html#categories" Categories
@@ -24,7 +24,7 @@ html lang="en"
         a.header-link href="https://iyi.dev/" target="_blank" rel="noopener noreferrer" iyi language ↗
       main#main!= content
       section.closing
-        .eyebrow GOOD TOOLS. BETTER POSSIBILITIES.
+        .eyebrow THE FIRST PACKAGES. YOURS COULD BE NEXT.
         h2
           ' Build something
           em iyi.
@@ -32,4 +32,4 @@ html lang="en"
       footer
         a.footer-logo href="#{root}index.html"!= "iyi<span class=\"accent\">packs.</span>"
         span A community-minded directory. Built with iyi.
-        a href="#{root}about/index.html" About the catalog ↗
+        a href=REPO_URL target="_blank" rel="noopener noreferrer" About the catalog ↗

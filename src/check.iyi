@@ -67,10 +67,13 @@ assert_ok(data["categories"][0]["icon"].as_s == "↗", "Unicode preserved")
 assert_ok(data["packages"].as_a.select { |pack| pack["distribution"].as_s == "GitHub" }.size == module_count, "imported modules")
 
 home = files["index.html"]
-assert_ok(home.includes?("Good code starts") && !home.includes?("{{content}}"), "homepage")
+assert_ok(home.includes?("Or write") && !home.includes?("{{content}}"), "homepage")
 assert_ok(occurrences(home, "<article class=\"package\"") == total && hidden_cards(home) == 0, "homepage shows every card")
 assert_ok(home.includes?("#{total} packages"), "catalog count")
 assert_ok((home.index("packages/base64/") || -1) < (home.index("packages/yaml/") || -1), "cards sorted by name")
+# Packages from GitHub come before the standard library.
+last_module = home.rindex("class=\"badge module\"") || -1
+assert_ok(last_module >= 0 && last_module < (home.index("class=\"badge std\"") || -1), "packages before the standard library")
 assert_ok(home.includes?("Content-Security-Policy") && home.includes?("script-src &#39;self&#39;"), "security policy")
 web = files["categories/web/index.html"]
 web_count += data["packages"].as_a.count { |pack| pack["distribution"].as_s == "GitHub" && pack["category"].as_s == "web" }
@@ -82,10 +85,8 @@ data["packages"].as_a.each do |pack|
 end
 assert_ok(home.includes?("Text &amp; markup") && !home.includes?("Text & markup"), "HTML escaping")
 assert_ok(files["packages/http/index.html"].includes?("Ships with iyi") || files["packages/http/index.html"].includes?("Included with iyi"), "standard module page")
-compare = files["compare/index.html"]
-assert_ok(compare.includes?("<table>") && occurrences(compare, "data-slug=\"http\"") == 11, "comparison table")
 ["about/index.html", "404.html", "style.css", "app.js"].each { |path| assert_ok(files.has_key?(path), "file #{path}") }
-assert_ok(files.size == 7 + categories + total, "file count")
+assert_ok(files.size == 6 + categories + total, "file count")
 # Every internal link, stylesheet, script and form target names a generated
 # file, so the site works from disk and from any directory of a host.
 files.each do |path, content|
@@ -102,4 +103,4 @@ files.each do |path, content|
     end
   end
 end
-puts "PASS: module import rules, catalog data, listing and category pages, all #{total} details, comparison, escaping, links and assets"
+puts "PASS: module import rules, catalog data, listing and category pages, all #{total} details, escaping, links and assets"

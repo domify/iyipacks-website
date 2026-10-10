@@ -10,7 +10,7 @@ import static::{serve_file}
 
 # Runs bin/build on bad TOML and on the real catalog, serves the generated
 # site over HTTP with the preview server's handler, and drives it in headless
-# Chrome so app.js's search, filters, sorting and comparison are exercised.
+# Chrome so app.js's search, filters and sorting are exercised.
 # CHROME names the browser; google-chrome, chromium and chromium-browser are
 # tried otherwise.
 
@@ -47,15 +47,6 @@ def visible_cards(dom : String) : Array(String)
   slugs
 end
 
-def visible_columns(dom : String) : Array(String)
-  slugs = [] of String
-  dom.split("<th scope=\"col\" data-slug=\"").each_with_index do |chunk, n|
-    next if n == 0 || chunk.split(">", 2)[0].ends_with?("hidden=\"\"")
-    slugs << chunk.split("\"", 2)[0]
-  end
-  slugs
-end
-
 def hidden?(dom : String, id : String) : Bool
   dom.split("id=\"#{id}\"", 2)[1].split(">", 2)[0].includes?("hidden")
 end
@@ -71,7 +62,7 @@ def find_chrome : String
 end
 
 def check_site(base : String, chrome : String, site : String) : Nil
-  ["/", "/about/", "/compare/", "/categories/web/", "/packages/http/", "/style.css", "/app.js", "/packages.json"].each do |path|
+  ["/", "/about/", "/categories/web/", "/packages/http/", "/style.css", "/app.js", "/packages.json"].each do |path|
     assert_ok(fetch(base + path).status == 200, "GET #{path}")
   end
   assert_ok((fetch(base + "/").header("Content-Type") || "").includes?("text/html"), "HTML content type")
@@ -108,12 +99,6 @@ def check_site(base : String, chrome : String, site : String) : Nil
   disk = browse(chrome, "file://#{site}/categories/web/index.html?q=unix")
   assert_ok(visible_cards(disk) == ["socket"] && disk.includes?("href=\"../../style.css\""), "site opened from disk")
   assert_ok(File.read("#{site}/index.html").includes?("href=\"style.css\""), "relative stylesheet")
-  compare = browse(chrome, base + "/compare/?p=http&p=json")
-  assert_ok(visible_columns(compare) == ["http", "json"] && !hidden?(compare, "compare-result"), "comparison")
-  ["/compare/", "/compare/?p=http&p=json&p=csv&p=uri", "/compare/?p=missing"].each do |path|
-    page = browse(chrome, base + path)
-    assert_ok(visible_columns(page).empty? && hidden?(page, "compare-result"), "comparison refused #{path}")
-  end
 end
 
 root = Dir.current
@@ -154,4 +139,4 @@ group do |g|
 end
 raise failure unless failure.empty?
 run("rm", ["-rf", work])
-puts "PASS: TOML refusals, static build, HTTP serving and 404s, browser search, filters, sorting and comparison"
+puts "PASS: TOML refusals, static build, HTTP serving and 404s, browser search, filters and sorting"

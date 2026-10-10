@@ -49,7 +49,8 @@ def imported_modules : Array(Hash(String, String))
   modules
 end
 
-PACKAGES = (json_records(CATALOG["packages"].as_a) + imported_modules).sorted_by { |pack| pack["name"].downcase }
+# Packages from GitHub first and the standard library after them, each by name.
+PACKAGES = (json_records(CATALOG["packages"].as_a) + imported_modules).sorted_by { |pack| "#{pack["distribution"] == "Standard library" ? 1 : 0} #{pack["name"].downcase}" }
 PACKAGES.each do |pack|
   unless CATEGORIES.any? { |c| c["slug"].as_s == pack["category"] }
     raise "catalog: #{pack["slug"]} is in an unknown category #{pack["category"].inspect}"
@@ -59,9 +60,15 @@ CATALOG_JSON = JSON.to_json({"categories" => json_records(CATEGORIES), "packages
 STYLE = File.read("public/style.css")
 SCRIPT = File.read("public/app.js")
 CONTENT_SECURITY_POLICY = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
-FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23d1333d'/%3E%3Ctext x='18' y='46' font-size='46' font-family='monospace' fill='%23ffffff'%3Ei%3C/text%3E%3C/svg%3E"
-COMPARE_ROWS = [{"Category", "category"}, {"Distribution", "distribution"}, {"Version", "version"}, {"Stars", "stars"}, {"Used by", "dependents"},
-                {"Contributors", "contributors"}, {"Last update", "pushed"}, {"License", "license"}, {"Description", "description"}, {"Usage", "usage"}]
+# The iyipacks mark: a package with the iyi mascot's face, its `i` eyes and
+# `y` beard. Inline in the header, and the favicon as a data URI.
+# Where a reader reports a package that is malicious or unsafe: GitHub, and
+# this directory's own issues.
+GITHUB_ABUSE = "https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam"
+REPO_URL = "https://github.com/domify/iyipacks-website"
+REPORT_URL = "#{REPO_URL}/issues/new"
+LOGO = File.read("public/logo.svg").strip
+FAVICON = "data:image/svg+xml," + LOGO.gsub('"', "'").gsub("#", "%23").gsub("<", "%3C").gsub(">", "%3E")
 
 def esc(value : String) : String
   HTML.escape(value)
@@ -101,13 +108,6 @@ def summary(pack : Hash(String, String)) : String
   parts.join(" · ")
 end
 
-def compare_value(pack : Hash(String, String), key : String) : String
-  value = field(pack, key)
-  value = category_name(value) if key == "category"
-  value = ago(value, NOW) if key == "pushed"
-  value.empty? ? "—" : value
-end
-
 def category_name(slug : String) : String
   CATEGORIES.each { |c| return c["name"].as_s if c["slug"].as_s == slug }
   "All categories"
@@ -132,10 +132,6 @@ def detail(pack : Hash(String, String), root : String) : String
   Slang.render("views/detail.slang")
 end
 
-def comparison(root : String) : String
-  Slang.render("views/compare.slang")
-end
-
 def about(root : String) : String
   Slang.render("views/about.slang")
 end
@@ -146,12 +142,11 @@ end
 
 pub def site_files : Hash(String, String)
   files = {} of String => String
-  files["index.html"] = page("Good tools for iyi", listing("", ""), "")
+  files["index.html"] = page("iyi packages", listing("", ""), "")
   CATEGORIES.each do |c|
     files["categories/#{c["slug"].as_s}/index.html"] = page(c["name"].as_s, listing(c["slug"].as_s, "../../"), "../../")
   end
   PACKAGES.each { |pack| files["packages/#{pack["slug"]}/index.html"] = page(pack["name"], detail(pack, "../../"), "../../") }
-  files["compare/index.html"] = page("Compare packages", comparison("../"), "../")
   files["about/index.html"] = page("About", about("../"), "../")
   files["404.html"] = page("Page not found", not_found("/"), "/")
   files["packages.json"] = CATALOG_JSON
