@@ -11,7 +11,7 @@ import modules::{gettable?, requirements, latest_version, category_for, dependen
 # GitHub numbers. Candidates come from code search for an iyi.mod at a
 # repository's root (needs GITHUB_TOKEN), repositories with the topic `iyi`,
 # and the `repo` of each [[modules]] in data/catalog.toml; each is kept when
-# it is not archived and its iyi.mod names it as `iyi get` needs. A fork is
+# its iyi.mod names it as `iyi get` needs, archived or not. A fork is
 # kept on the same terms: one that only copies a module names the original.
 # curl does the HTTPS, as std/http has no TLS. Without GITHUB_TOKEN the API
 # allows 60 requests an hour, enough for a few modules but not for search.
@@ -82,7 +82,7 @@ end
 def fetch(name : String) : Hash(String, String)?
   repo = api("repos/#{name}")
   return nil unless repo
-  return nil if repo["archived"].as_bool || repo["private"].as_bool
+  return nil if repo["private"].as_bool
   full = repo["full_name"].as_s
   status, manifest = get("https://raw.githubusercontent.com/#{full}/#{repo["default_branch"].as_s}/iyi.mod")
   FAILED << full if status == 0 || status >= 500

@@ -54,7 +54,7 @@ permissions is enough.
 `make update` (`src/update.iyi`) looks at three kinds of repository: those
 with an `iyi.mod` at their root, found by GitHub code search; those with the
 topic `iyi`; and the `repo` of each `[[modules]]` entry in `data/catalog.toml`.
-It keeps a repository that is not archived and whose `iyi.mod` says
+It keeps a repository, archived or not, whose `iyi.mod` says
 `module github.com/OWNER/REPO` for itself, as `iyi get` requires; that leaves
 out applications, whose `iyi.mod` names no repository, and forks that only copy
 a module. For each it records the repository's numbers, the highest

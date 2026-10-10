@@ -10,12 +10,18 @@ section.detail.prose
     a.text-link href="https://shardbox.org/" target="_blank" rel="noopener noreferrer"
       | Find Crystal shards on Shardbox
       span ↗
+  h2 Bring a shard over
+  p
+    ' iyi has a tool that rewrites a shard as iyi modules:
+    code> iyi migrate src --out iyi --annotate --check
+    | writes the modules, compiles each one and names what is left for a person to finish, such as the types it could not work out.
+  p We recommend doing the rest with an LLM as well: give it the shard, the migrated modules and what --check reports, and review what it writes. Then publish the module on GitHub, and it is listed here.
   h2 Honest data
   p Stars, forks, issues, contributors, version tags and the last push come from GitHub, as they were when the catalog was last imported. "Used by" counts the listed modules whose iyi.mod requires a module. Downloads are not counted: iyi get fetches from git, and nobody sees that.
   h2 Add your package
   p There is nothing to fill in or send: publish your module on GitHub, and the next import of the catalog finds it. It is listed when
   ul
-    li the repository is public and not archived,
+    li the repository is public (an archived one is listed too: archived does not mean broken),
     li
       ' an iyi.mod at its root names the repository, as in
       code> module github.com/you/your-module

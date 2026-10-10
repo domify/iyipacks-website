@@ -30,14 +30,14 @@ section.hero
         span.art-ok> added
         | github.com/domify/toml v0.1.0
     .art-file
-      .art-name your-app.iyi
+      .art-name your_app.iyi
       .art-line.art-add import github.com/domify/toml::{TOML}
       .art-line.art-add toml = TOML.parse(%(status = "It works!"))
       .art-line.art-add puts toml["status"]
     .art-term
       .art-line
         span.art-prompt> >
-        | iyi run your-app.iyi
+        | iyi run your_app.iyi
       .art-line.art-out It works!
 
 .stats
