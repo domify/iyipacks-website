@@ -15,14 +15,14 @@ html lang="en"
     .shell
       header
         a.logo href="#{root}index.html" aria-label="iyipacks home"
-          span.logo-mark== "iyi<span>▰</span>"
-          span.logo-name== accent("packs")
+          span.logo-mark!= "iyi<span>▰</span>"
+          span.logo-name!= accent("packs")
         nav aria-label="Main navigation"
           a href="#{root}index.html#catalog" Packages
           a href="#{root}index.html#categories" Categories
           a href="#{root}about/index.html" About
         a.header-link href="https://iyi.dev/" target="_blank" rel="noopener noreferrer" iyi language ↗
-      main#main== content
+      main#main!= content
       section.closing
         .eyebrow GOOD TOOLS. BETTER POSSIBILITIES.
         h2
@@ -30,6 +30,6 @@ html lang="en"
           em iyi.
         a.text-link href="https://github.com/iyilang/iyi" target="_blank" rel="noopener noreferrer" Meet the language ↗
       footer
-        a.footer-logo href="#{root}index.html"== "iyi<span class=\"accent\">packs.</span>"
+        a.footer-logo href="#{root}index.html"!= "iyi<span class=\"accent\">packs.</span>"
         span A community-minded directory. Built with iyi.
         a href="#{root}about/index.html" About the catalog ↗

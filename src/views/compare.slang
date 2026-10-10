@@ -8,7 +8,7 @@ section.detail#compare-empty
 / One column per package; app.js shows the 1–3 named by ?p= parameters.
 section.detail#compare-result hidden=true
   a.text-link href="#{root}index.html#catalog" ← Back to packages
-  h1== accent("Side by side")
+  h1!= accent("Side by side")
   p.lead Find the right building block for your project.
   .table-scroll
     table

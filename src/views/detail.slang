@@ -2,14 +2,14 @@
 section.detail
   a.text-link href="#{root}index.html#catalog" ← Back to packages
   .eyebrow= category_name(pack["category"].as_s)
-  h1== accent(pack["name"].as_s)
+  h1!= accent(pack["name"].as_s)
   p.lead= pack["description"].as_s
   span.badge class=badge_class(kind) = kind
   .detail-grid
     div
       h2 Get started
       / One line: whitespace inside pre is shown as is.
-      pre== "<code>#{esc(pack["usage"].as_s)}</code>"
+      pre!= "<code>#{esc(pack["usage"].as_s)}</code>"
       h2 Compatibility notes
       p= pack["note"].as_s
       - if kind == "Native iyi"

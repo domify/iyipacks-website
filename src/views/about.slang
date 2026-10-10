@@ -1,6 +1,6 @@
 section.detail.prose
   a.text-link href="#{root}index.html" ← Back home
-  h1== accent("A good place to start")
+  h1!= accent("A good place to start")
   p.lead A hand-curated directory for the iyi ecosystem, inspired by the Ruby Toolbox.
   h2 What is in the directory?
   p Native iyi standard modules and a small selection of Crystal ecosystem libraries. Standard modules ship with iyi. Crystal libraries require the Crystal compatibility mode and their own dependencies.
