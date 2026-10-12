@@ -4,7 +4,7 @@ image: ghcr.io/domify/iyipacks-website:latest
 servers:
   web:
     hosts:
-      - condeploy
+      - con
     proxy:
       host: iyipacks.mx.ee
       ssl: true
