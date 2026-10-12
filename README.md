@@ -1,5 +1,7 @@
 # iyipacks
 
+The website is available at [https://iyipacks.mx.ee](https://iyipacks.mx.ee).
+
 A package directory written in iyi, inspired by the
 [Ruby Toolbox](https://www.ruby-toolbox.com/). An iyi program reads
 `data/catalog.toml` and `data/modules.toml` and generates a finished static site: the web server only
@@ -24,6 +26,28 @@ are relative and name each `index.html`. For production, upload the contents of
 `site/` to any static web host (nginx, Caddy, GitHub Pages, …), in any directory.
 Configure the host to answer missing pages with `404.html`; it is the only page
 whose links start from the host's root.
+
+## Meridian deployment
+
+`.meridian/deploy.yml` deploys `iyipacks.mx.ee` over HTTPS to the SSH alias
+`con`, using the `admin` user (matching the local SSH alias). The server must
+have Podman, rootless systemd with lingering enabled for that user, and Meridian's
+incremental transfer tools installed. DNS must point at the server, with ports
+80 and 443 reachable.
+
+```sh
+make image       # builds site/ and ghcr.io/domify/iyipacks-website:latest in Podman
+meridian plan    # validates and shows the resolved configuration
+meridian setup   # first time: installs networks and the shared Caddy proxy
+meridian check   # checks local image, SSH, server tools and proxy readiness
+meridian deploy
+```
+
+Meridian transfers the local image incrementally over SSH; no GHCR login or
+push is required. It does not build the image itself, so run `make image` before
+each deploy. The app's Caddy serves the generated files on port 8080, exposes
+`/health`, and serves `404.html` with status 404 for missing pages. Meridian's
+shared proxy handles public HTTPS.
 
 ## Features
 

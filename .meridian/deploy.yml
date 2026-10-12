@@ -1,0 +1,17 @@
+---
+service: iyipacks_mx_ee
+image: ghcr.io/domify/iyipacks-website:latest
+servers:
+  web:
+    hosts:
+      - con
+    proxy:
+      host: iyipacks.mx.ee
+      ssl: true
+      app_port: 8080
+      healthcheck:
+        path: /health
+ssh:
+  user: admin
+transfer:
+  mode: incremental
