@@ -4,7 +4,7 @@ image: ghcr.io/domify/iyipacks-website:latest
 servers:
   web:
     hosts:
-      - con
+      - condeploy
     proxy:
       host: iyipacks.mx.ee
       ssl: true
@@ -12,6 +12,6 @@ servers:
       healthcheck:
         path: /health
 ssh:
-  user: admin
+  user: deploy
 transfer:
   mode: incremental
