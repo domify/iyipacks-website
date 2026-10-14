@@ -1,12 +1,14 @@
 ---
-service: iyipacks_mx_ee
+service: packs_iyi_dev
 image: ghcr.io/domify/iyipacks-website:latest
 servers:
   web:
     hosts:
       - condeploy
     proxy:
-      host: iyipacks.mx.ee
+      host: packs.iyi.dev
+      redirect_hosts:
+        - iyipacks.mx.ee
       ssl: true
       app_port: 8080
       healthcheck:
@@ -15,3 +17,5 @@ ssh:
   user: deploy
 transfer:
   mode: incremental
+hooks:
+  pre_deploy: make image

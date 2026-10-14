@@ -1,4 +1,4 @@
-.PHONY: build image serve update check test test-smoke clean
+.PHONY: build image serve update refresh check test test-smoke clean
 IYI = IYI_CACHE_DIR=$(CURDIR)/.cache iyi
 IMAGE ?= ghcr.io/domify/iyipacks-website:latest
 # .env, kept out of git, may hold GITHUB_TOKEN=… for make update.
@@ -23,6 +23,11 @@ update:
 	mkdir -p bin
 	$(IYI) build src/update.iyi -o bin/update --no-color
 	./bin/update
+# Imports GitHub modules, then generates the site from the updated catalog.
+# Separate recursive calls preserve this order even with make -j.
+refresh:
+	$(MAKE) update
+	$(MAKE) build
 check:
 	$(IYI) check src/build.iyi --no-color
 	$(IYI) check src/serve.iyi --no-color
