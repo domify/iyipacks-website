@@ -1,5 +1,7 @@
 # iyipacks
 
+Do not pollute commit messages with co authored by Agents.
+
 A static catalog site of the iyi standard library and the iyi modules on
 GitHub, built from `data/catalog.toml` and `data/modules.toml` by
 `src/build.iyi`.
