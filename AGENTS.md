@@ -4,6 +4,8 @@ A static catalog site of the iyi standard library and the iyi modules on
 GitHub, built from `data/catalog.toml` and `data/modules.toml` by
 `src/build.iyi`.
 
+The live site is available at <https://packs.iyi.dev>.
+
 - The HTML is in Slang templates under `src/views/`. Before you change one,
   read Slang's guide to writing templates: `TEMPLATES.md` in
   `.cache/mod/github.com/domify/slang@v1.0.0/` after a build, or
