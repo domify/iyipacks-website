@@ -1,6 +1,6 @@
 # iyipacks
 
-The website is available at [https://iyipacks.mx.ee](https://iyipacks.mx.ee).
+The website is available at [https://packs.iyi.dev](https://packs.iyi.dev).
 
 A package directory written in iyi, inspired by the
 [Ruby Toolbox](https://www.ruby-toolbox.com/). An iyi program reads
@@ -15,7 +15,7 @@ Requirements: **iyi 0.16.2 or later** and `make`. Run these commands from the
 project root:
 
 ```sh
-cd ~/contribute/iyipacks
+cd ~/contribute/packs.iyi.dev
 make build   # writes the site into site/
 make serve   # optional local preview at http://127.0.0.1:3000
 ```
@@ -29,14 +29,14 @@ whose links start from the host's root.
 
 ## Meridian deployment
 
-`.meridian/deploy.yml` deploys `iyipacks.mx.ee` over HTTPS to the SSH alias
-`con`, using the `admin` user (matching the local SSH alias). The server must
+`.meridian/deploy.yml` deploys `packs.iyi.dev` over HTTPS to the SSH alias
+`condeploy`, using the `deploy` user (matching the local SSH alias). The server must
 have Podman, rootless systemd with lingering enabled for that user, and Meridian's
 incremental transfer tools installed. DNS must point at the server, with ports
 80 and 443 reachable.
 
 ```sh
-make image       # builds site/ and ghcr.io/domify/iyipacks-website:latest in Podman
+make image       # first time: creates the local image required by Meridian's checks
 meridian plan    # validates and shows the resolved configuration
 meridian setup   # first time: installs networks and the shared Caddy proxy
 meridian check   # checks local image, SSH, server tools and proxy readiness
@@ -44,8 +44,11 @@ meridian deploy
 ```
 
 Meridian transfers the local image incrementally over SSH; no GHCR login or
-push is required. It does not build the image itself, so run `make image` before
-each deploy. The app's Caddy serves the generated files on port 8080, exposes
+push is required. The configured `pre_deploy` hook runs `make image` before
+each deploy, rebuilding `site/` and the image. Run `make refresh` before
+`meridian deploy` to also import the latest modules from GitHub. On a fresh
+machine, run `make image` once first: Meridian checks that the local image exists
+before running the hook. If the hook fails, deployment stops. The app's Caddy serves the generated files on port 8080, exposes
 `/health`, and serves `404.html` with status 404 for missing pages. Meridian's
 shared proxy handles public HTTPS.
 
@@ -65,15 +68,29 @@ shared proxy handles public HTTPS.
 
 ## Updating the catalog
 
+To refresh the package listings from GitHub and generate the website, run this command from the
+project root:
+
 ```sh
-GITHUB_TOKEN=… make update   # finds the iyi modules on GitHub, writes data/modules.toml
-make build
+GITHUB_TOKEN=… make refresh   # imports GitHub modules, then generates site/
 ```
 
 The token may also be kept in `.env` in the project root, as a line
 `GITHUB_TOKEN=…`; git ignores that file and the Makefile reads it. A
 fine-grained token with read-only access to public repositories and no
 permissions is enough.
+
+If `.env` already contains `GITHUB_TOKEN=…`, simply run:
+
+```sh
+make refresh
+```
+
+`make refresh` runs `make update` followed by `make build`. If the import
+fails, the build does not run. Both commands can also be run separately.
+
+To preview the updated site locally, run `make serve` and open
+<http://127.0.0.1:3000>.
 
 `make update` (`src/update.iyi`) looks at three kinds of repository: those
 with an `iyi.mod` at their root, found by GitHub code search; those with the
